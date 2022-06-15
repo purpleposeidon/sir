@@ -1,11 +1,10 @@
 use crate::util::Ty;
 use crate::rt::*;
 use crate::Blade;
-use std::borrow::Cow;
 use crate::util::{FieldInit, Init};
 use std::collections::HashMap;
-use std::any::TypeId;
 use crate::knights::{a2r, a2m};
+use std::sync::Arc;
 
 impl<T: Blade> Blade for Option<T> {
     blade! {
@@ -24,26 +23,25 @@ impl<T: Blade, E: Blade> Blade for Result<T, E> {
 }
 
 impl<T: Blade> Blade for Box<T> {
-    const SCABBARD: Scabbard = {
-        use crate::prelude_macro::*;
-        Scabbard {
-            item: Item {
-                ty: Ty::of::<Self>,
-                guards: Cow::Borrowed(&[]),
-                body: Body::Struct(BodyStruct {
+    fn sword() -> Sword {
+        Sword {
+            item: Arc::new(Item {
+                ty: Ty::of::<Self>(),
+                guards: vec![],
+                body: Body::Struct(Arc::new(BodyStruct {
                     body_type: BodyType::Tuple,
-                    fields: Cow::Borrowed(&[Field {
+                    fields: vec![Arc::new(Field {
                         name: "0",
-                        ty: Ty::of::<T>,
+                        ty: Ty::of::<T>(),
                         as_ref: |s: &dyn AnyDebug| -> &dyn AnyDebug {
-                            Self::downcast_ref(s) as &T
+                            <dyn AnyDebug>::downcast_ref(s).expect("wrong type") as &T
                         },
                         as_mut: |s: &mut dyn AnyDebug| -> &mut dyn AnyDebug {
-                            Self::downcast_mut(s) as &mut T
+                            <dyn AnyDebug>::downcast_mut(s).expect("wrong type") as &mut T
                         },
                         with: |f: &mut dyn FnMut(AnyOptionT)| f(&mut Option::<Self>::None),
-                        guards: Cow::Borrowed(&[]),
-                    }]),
+                        guards: vec![],
+                    })],
                     init: |out: AnyOptionT, each: &mut dyn FnMut(AnyOptionT)| {
                         let out: &mut Option<Box<T>> = out.downcast_mut().unwrap();
                         let mut inner = Option::<T>::None;
@@ -52,32 +50,30 @@ impl<T: Blade> Blade for Box<T> {
                             *out = Some(Box::new(inner));
                         }
                     },
-                }),
-            },
-            init: Cow::Borrowed(&[|mut _field: FieldInit, init: Init| {
+                })),
+            }),
+            init: vec![|mut _field: FieldInit, init: Init| {
                 let (_0, _field) = _field.unpack::<T>();
                 init.with(Box::new(_0));
-            }]),
+            }],
         }
-    };
+    }
 }
 
-fn scabbard_of<T: Blade>() -> Scabbard { <T as Blade>::SCABBARD }
 impl<T: Blade> Blade for Vec<T> {
-    const SCABBARD: Scabbard = {
-        use crate::prelude_macro::*;
+    fn sword() -> Sword {
         use crate::rt::*;
         use crate::util::*;
-        Scabbard {
-            item: Item {
-                ty: Ty::of::<Self>,
-                guards: Cow::Borrowed(&[]),
-                body: Body::Vec(BodyVec {
-                    items: CowBox::Init(scabbard_of::<T>),
+        Sword {
+            item: Arc::new(Item {
+                ty: Ty::of::<Self>(),
+                guards: vec![],
+                body: Body::Vec(Arc::new(BodyVec {
+                    items: Ty::of::<T>(),
                     vt: CollectionVec {
                         len: |a: &AnyThis| a2r::<Self>(a).len(),
-                        read: |a: &AnyThis, i: usize| &a2r::<Self>(a)[i],
-                        write: |a: &mut AnyThis, i: usize| &mut a2m::<Self>(a)[i],
+                        get_ref: |a: &AnyThis, i: usize| &a2r::<Self>(a)[i],
+                        get_mut: |a: &mut AnyThis, i: usize| &mut a2m::<Self>(a)[i],
                         reserve: |a: &mut AnyThis, n: usize| a2m::<Self>(a).reserve(n),
                         push: |a: &mut AnyThis, val: AnyOptionT| {
                             let a = a2m::<Self>(a);
@@ -114,13 +110,13 @@ impl<T: Blade> Blade for Vec<T> {
                             *output = Some(out);
                         },
                     },
-                }),
-            },
-            init: Cow::Borrowed(&[|_field: FieldInit, init: Init| {
+                })),
+            }),
+            init: vec![|_field: FieldInit, init: Init| {
                 init.with(Self::default());
-            }]),
+            }],
         }
-    };
+    }
 }
 
 use crate::prelude_macro::AnyDebug;
@@ -131,25 +127,24 @@ where
     K: AnyDebug,
     V: AnyDebug,
 {
-    const SCABBARD: Scabbard = {
-        use crate::prelude_macro::*;
+    fn sword() -> Sword {
         use crate::rt::*;
         use crate::util::*;
-        Scabbard {
-            item: Item {
-                ty: Ty::of::<Self>,
-                guards: Cow::Borrowed(&[]),
-                body: Body::Map(BodyMap {
-                    keys: CowBox::Init(|| K::SCABBARD.item),
-                    vals: CowBox::Init(|| V::SCABBARD.item),
+        Sword {
+            item: Arc::new(Item {
+                ty: Ty::of::<Self>(),
+                guards: vec![],
+                body: Body::Map(Arc::new(BodyMap {
+                    keys: Ty::of::<K>(),
+                    vals: Ty::of::<V>(),
                     vt: CollectionMap {
                         len: |a: &AnyThis| a2r::<Self>(a).len(),
-                        read: |a: &AnyThis, k: AnyKey| {
+                        get_ref: |a: &AnyThis, k: AnyKey| {
                             let a = a2r::<HashMap<&K, V>>(a);
                             let k = a2r::<K>(k);
                             a.get(k).map(|v| v as &dyn AnyDebug)
                         },
-                        write: |a: &mut AnyThis, k: AnyKey| {
+                        get_mut: |a: &mut AnyThis, k: AnyKey| {
                             let a = a2m::<HashMap<&K, V>>(a);
                             let k = a2r::<K>(k);
                             a.get_mut(k).map(|v| v as &mut dyn AnyDebug)
@@ -199,37 +194,39 @@ where
                             *output = Some(out);
                         },
                     },
-                }),
-            },
-            init: Cow::Borrowed(&[|_field: FieldInit, init: Init| {
+                })),
+            }),
+            init: vec![|_field: FieldInit, init: Init| {
                 init.with(Self::default());
-            }]),
+            }],
         }
-    };
+    }
 }
 
 macro_rules! impl_primal_blades {
     ($($ty:ty,)*) => {
         $(
             impl Blade for $ty {
-                const SCABBARD: Scabbard = Scabbard {
-                    item: Item {
-                        ty: Ty::of::<Self>,
-                        guards: Cow::Borrowed(&[]),
-                        body: Body::Primitive,
-                    },
-                    init: Cow::Borrowed(&[
-                        |mut _field: FieldInit, init: Init| {
-                            let (val, _field) = _field.unpack::<Self>();
-                            init.with(val);
-                        },
-                    ]),
-                };
+                fn sword() -> Sword {
+                    Sword {
+                        item: Arc::new(Item {
+                            ty: Ty::of::<Self>(),
+                            guards: vec![],
+                            body: Body::Primitive,
+                        }),
+                        init: vec![
+                            |mut _field: FieldInit, init: Init| {
+                                let (val, _field) = _field.unpack::<Self>();
+                                init.with(val);
+                            },
+                        ],
+                    }
+                }
             }
         )*
-        pub fn register_primals() -> HashMap<TypeId, Scabbard> {
+        pub fn register_primals() -> HashMap<Ty, Sword> {
             let mut ret = HashMap::new();
-            $(ret.insert(TypeId::of::<$ty>(), <$ty as Blade>::SCABBARD);)*
+            $(ret.insert(Ty::of::<$ty>(), <$ty as Blade>::sword());)*
             ret
         }
     };
@@ -249,7 +246,6 @@ impl_primal_blades! {
     u128,
     usize,
     isize,
-
     String,
     &'static str,
 }

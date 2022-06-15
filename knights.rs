@@ -2,12 +2,11 @@
 use crate::rt::*;
 use std::collections::{HashMap, HashSet};
 use crate::util::AnyDebug;
-use std::any::TypeId;
 use crate::Blade;
 use std::sync::Arc;
 use crate::rt::AnyOptionT;
 use std::any::type_name;
-use crate::vocab::EnumTag;
+use crate::chivalry::EnumTag;
 
 // Sir Jen - Debugger/Inspector
 // Sir Mise - Printer
@@ -39,10 +38,10 @@ pub fn a2m<R: AnyDebug>(a: &mut dyn AnyDebug) -> &mut R {
 
 #[derive(Clone)]
 pub struct Armory {
-    scabbards: Arc<HashMap<TypeId, Scabbard>>,
+    pub(crate) swords: Arc<HashMap<Ty, Sword>>,
 }
 pub struct BuildArmory {
-    scabbards: HashMap<TypeId, Scabbard>,
+    swords: HashMap<Ty, Sword>,
 }
 impl Default for BuildArmory {
     fn default() -> Self { Self::new() }
@@ -55,66 +54,59 @@ impl Armory {
 impl BuildArmory {
     pub fn new() -> Self {
         Self {
-            scabbards: crate::impls::register_primals(),
+            swords: crate::impls::register_primals(),
         }
     }
     pub fn add<T: Blade>(&mut self) {
-        self.add_blade(Scabbard::of::<T>());
+        self.add_blade(Sword::of::<T>());
     }
-    pub fn add_blade(&mut self, scabbard: Scabbard) {
-        let ty = (scabbard.item.ty)().id;
-        self.scabbards.insert(ty, scabbard);
+    pub fn add_blade(&mut self, sword: Sword) {
+        self.swords.insert(sword.item.ty.clone(), sword);
     }
     pub fn build(mut self) -> Armory {
         use std::cell::RefCell;
         let holes = RefCell::new(vec![]);
-        let known = self.scabbards.keys().cloned().collect::<HashSet<TypeId>>();
-        for (ty, scab) in &mut self.scabbards {
-            let sty = (scab.item.ty)();
-            let sub = sty.id;
+        let known = self.swords.keys().cloned().collect::<HashSet<Ty>>();
+        for (ty, scab) in &mut self.swords {
+            let sty = &scab.item.ty;
             macro_rules! hole {
                 ($($tt:tt)*) => {
                     holes.borrow_mut().push(format!($($tt)*));
                 };
             }
-            if ty != &sub {
-                hole!("{} is not {:?}", sty.name, sub);
+            if ty != sty {
+                hole!("{} is not {:?}", ty.name, sty.name);
             }
             use crate::rt::*;
-            use crate::List;
-            let validate_ty = |ty: fn() -> Ty| {
-                let ty = ty();
-                if !known.contains(&ty.id) {
+            let validate_ty = |ty: &Ty| {
+                if !known.contains(ty) {
                     hole!("unregistered {} in {}", ty.name, sty.name);
                 }
             };
-            let validate_fields = |body_type: BodyType, fields: &List<Field>| {
+            let validate_fields = |body_type: BodyType, fields: &Vec<Arc<Field>>| {
                 if body_type == BodyType::Unit {
                     assert!(fields.is_empty());
                 }
-                for field in fields.as_ref() {
-                    validate_ty(field.ty);
+                for field in fields {
+                    validate_ty(&field.ty);
                 }
             };
-            let validate_item = |item: &Item| {
-                validate_ty(item.ty);
-            };
-            match &mut scab.item.body {
+            match &scab.item.body {
                 Body::Primitive => (),
-                Body::Struct(BodyStruct { body_type, fields, .. }) => {
-                    validate_fields(*body_type, &fields);
+                Body::Struct(bod) => {
+                    validate_fields(bod.body_type, &bod.fields);
                 },
-                Body::Enum(BodyEnum { variants, .. }) => {
-                    for variant in variants.as_ref() {
+                Body::Enum(bod) => {
+                    for variant in &bod.variants {
                         validate_fields(variant.body_type, &variant.fields);
                     }
                 },
-                Body::Vec(BodyVec { items, .. }) => {
-                    validate_item(&items.as_own().item);
+                Body::Vec(bod) => {
+                    validate_ty(&bod.items);
                 },
-                Body::Map(BodyMap { keys, vals, .. }) => {
-                    validate_item(keys.as_own());
-                    validate_item(vals.as_own());
+                Body::Map(bod) => {
+                    validate_ty(&bod.keys);
+                    validate_ty(&bod.vals);
                 },
             }
         }
@@ -128,26 +120,26 @@ impl BuildArmory {
             panic!("{}", msg);
         }
         Armory {
-            scabbards: Arc::new(self.scabbards),
+            swords: Arc::new(self.swords),
         }
     }
 }
 impl Armory {
     pub fn visit<'a, E>(
         &self,
-        ty: TypeId,
+        ty: &Ty,
         visitor: &mut dyn BodyVisitor<Err=E>,
     ) -> Result<(), E> {
-        let scabbard = self.scabbards.get(&ty).expect("missing scabbard");
-        self.visit_scabbard(scabbard, visitor)
+        let sword = self.swords.get(&ty).expect("missing sword");
+        self.visit_sword(sword, visitor)
     }
-    pub fn visit_scabbard<'a, E>(
+    pub fn visit_sword<'a, E>(
         &self,
-        scabbard: &Scabbard,
+        sword: &Sword,
         visitor: &mut dyn BodyVisitor<Err=E>,
     ) -> Result<(), E> {
-        let ty = scabbard.item.type_id();
-        let item = &scabbard.item;
+        let ty = &sword.item.ty;
+        let item = &sword.item;
         match &item.body {
             Body::Primitive => {
                 visitor.visit_primitive(Visit {
@@ -192,10 +184,9 @@ pub struct Visit<'a, T> {
 }
 
 
-// FIXME: Rename to Quest? Hmm.
 pub trait BodyVisitor {
     type Err;
-    fn visit_primitive(&mut self, visit: Visit<TypeId>) -> Result<(), Self::Err>;
+    fn visit_primitive(&mut self, visit: Visit<Ty>) -> Result<(), Self::Err>;
     fn visit_struct(&mut self, visit: Visit<BodyStruct>) -> Result<(), Self::Err>;
     fn visit_enum(&mut self, visit: Visit<BodyEnum>) -> Result<(), Self::Err>;
     fn visit_vec(&mut self, visit: Visit<BodyVec>) -> Result<(), Self::Err>;
@@ -203,50 +194,22 @@ pub trait BodyVisitor {
 }
 
 
-// FIXME: Improved trait? Add default methods? Would st_george like this?
-// So visit() is a default method that calls enter(), exit(), and performs recursion.
-/*pub trait Quest {
-    type Err;
-    fn enter_item(&mut self, visit: Visit<Item>) -> Result<(), Self::Err>;
-    fn visit_item(&mut self, visit: Visit<Item>) -> Result<(), Self::Err>;
-    fn leave_item(&mut self, visit: Visit<Item>) -> Result<(), Self::Err>;
-
-    fn visit_primitive(&mut self, visit: Visit<TypeId>) -> Result<(), Self::Err>;
-    fn visit_field(&mut self, visit: Visit<Field>) -> Result<(), Self::Err>;
-
-    fn enter_struct(&mut self, visit: Visit<BodyStruct>) -> Result<(), Self::Err>;
-    fn leave_struct(&mut self, visit: Visit<BodyStruct>) -> Result<(), Self::Err>;
-
-    fn enter_enum(&mut self, visit: Visit<BodyEnum>) -> Result<(), Self::Err>;
-    fn leave_enum(&mut self, visit: Visit<BodyEnum>) -> Result<(), Self::Err>;
-    fn enter_enum_variant(&mut self, visit: Visit<Variant>) -> Result<(), Self::Err>;
-    fn leave_enum_variant(&mut self, visit: Visit<Variant>) -> Result<(), Self::Err>;
-
-    fn enter_vec(&mut self, visit: Visit<BodyVec>) -> Result<(), Self::Err>;
-    fn visit_vec_item(&mut self, visit: Visit<BodyVec>) -> Result<(), Self::Err>;
-    fn leave_vec(&mut self, visit: Visit<BodyVec>) -> Result<(), Self::Err>;
-
-    fn enter_map(&mut self, visit: Visit<BodyVec>) -> Result<(), Self::Err>;
-    fn visit_map_item(&mut self, visit: Visit<BodyVec>) -> Result<(), Self::Err>;
-    fn leave_map(&mut self, visit: Visit<BodyVec>) -> Result<(), Self::Err>;
-}*/
-
 pub struct Vey {
     pub armory: Armory,
-    pub primitives: HashMap<TypeId, fn(&dyn AnyDebug)>,
+    pub primitives: HashMap<Ty, fn(&dyn AnyDebug)>,
 }
 impl Vey {
     pub fn equip(armory: &Armory) -> Self {
-        let mut primitives = HashMap::<TypeId, fn(&dyn AnyDebug)>::new();
-        primitives.insert(TypeId::of::<i32>(), |x: &dyn AnyDebug| {
+        let mut primitives = HashMap::<Ty, fn(&dyn AnyDebug)>::new();
+        primitives.insert(Ty::of::<i32>(), |x: &dyn AnyDebug| {
             let x: i32 = *a2r(x);
             print!("{}", x)
         });
-        primitives.insert(TypeId::of::<&'static str>(), |x: &dyn AnyDebug| {
+        primitives.insert(Ty::of::<&'static str>(), |x: &dyn AnyDebug| {
             let x: &str = *a2r(x);
             print!("{:?}", x)
         });
-        primitives.insert(TypeId::of::<String>(), |x: &dyn AnyDebug| {
+        primitives.insert(Ty::of::<String>(), |x: &dyn AnyDebug| {
             let x: &String = a2r(x);
             print!("{:?}", x)
         });
@@ -256,13 +219,13 @@ impl Vey {
         }
     }
     pub fn value(&self, val: &dyn AnyDebug) -> Result<(), ()> {
-        let ty = <dyn AnyDebug>::type_id(val);
+        let ty = val.get_ty();
         let mut visitor = VeyVisitor {
             armory: &self.armory,
             depth: 0,
             val,
         };
-        self.armory.visit(ty, &mut visitor)?;
+        self.armory.visit(&ty, &mut visitor)?;
         println!();
         Ok(())
     }
@@ -294,13 +257,12 @@ fn open_bt(bt: BodyType) -> &'static str {
 type VeyR = Result<(), ()>;
 impl<'a> BodyVisitor for VeyVisitor<'a> {
     type Err = ();
-    fn visit_primitive(&mut self, _visit: Visit<TypeId>) -> VeyR {
-        // FIXME: Use a prim HashMap; AnyDebug -= Debug.
+    fn visit_primitive(&mut self, _visit: Visit<Ty>) -> VeyR {
         print!("{:?}", self.val);
         Ok(())
     }
     fn visit_struct(&mut self, visit: Visit<BodyStruct>) -> VeyR {
-        print!("{}", (visit.item.ty)().name);
+        print!("{}", visit.item.ty.name);
         let closer = open_bt(visit.body.body_type);
         if closer == "" { return Ok(()); }
         let d = if visit.body.body_type == BodyType::Tuple {
@@ -316,7 +278,7 @@ impl<'a> BodyVisitor for VeyVisitor<'a> {
                 depth,
                 val: field.get_ref(self.val),
             };
-            let ty = <dyn AnyDebug>::type_id(sub.val);
+            let ty = sub.val.get_ty();
             if d == 1 {
                 sub.indent();
             } else if first {
@@ -327,7 +289,7 @@ impl<'a> BodyVisitor for VeyVisitor<'a> {
             if visit.body.body_type == BodyType::Struct {
                 print!("{}: ", field.name);
             }
-            self.armory.visit(ty, &mut sub)?;
+            self.armory.visit(&ty, &mut sub)?;
             if d == 1 {
                 println!(",");
             }
@@ -339,7 +301,7 @@ impl<'a> BodyVisitor for VeyVisitor<'a> {
         Ok(())
     }
     fn visit_enum(&mut self, visit: Visit<BodyEnum>) -> VeyR {
-        let discrim = (visit.body.discrim)(self.val);
+        let discrim = (visit.body.variant_index)(self.val);
         let variant = &visit.body.variants[discrim];
         print!("{}", variant.name);
         let closer = open_bt(variant.body_type);
@@ -352,10 +314,10 @@ impl<'a> BodyVisitor for VeyVisitor<'a> {
                     depth,
                     val: field.get_ref(self.val),
                 };
-                let ty = <dyn AnyDebug>::type_id(sub.val);
+                let ty = sub.val.get_ty();
                 self.indent();
                 print!("{}: ", field.name);
-                self.armory.visit(ty, &mut sub)?;
+                self.armory.visit(&ty, &mut sub)?;
                 println!(",");
             }
         } else {
@@ -371,8 +333,8 @@ impl<'a> BodyVisitor for VeyVisitor<'a> {
                     depth: self.depth,
                     val: field.get_ref(self.val),
                 };
-                let ty = <dyn AnyDebug>::type_id(sub.val);
-                self.armory.visit(ty, &mut sub)?;
+                let ty = sub.val.get_ty();
+                self.armory.visit(&ty, &mut sub)?;
             }
         }
         print!("{}", closer);
@@ -380,13 +342,13 @@ impl<'a> BodyVisitor for VeyVisitor<'a> {
     }
     fn visit_vec(&mut self, visit: Visit<BodyVec>) -> VeyR {
         let len = (visit.body.vt.len)(self.val);
-        let ty = visit.body.items.with(|w| w.item.type_id());
+        let ty = &visit.body.items;
         if len == 0 {
             print!("vec![]");
             return Ok(());
         } else if len == 1 {
             print!("vec![");
-            let val = (visit.body.vt.read)(self.val, 0);
+            let val = (visit.body.vt.get_ref)(self.val, 0);
             let mut sub = VeyVisitor {
                 armory: self.armory,
                 depth: self.depth,
@@ -399,7 +361,7 @@ impl<'a> BodyVisitor for VeyVisitor<'a> {
         println!("vec![");
         let depth = self.depth + 1;
         for i in 0..len {
-            let val = (visit.body.vt.read)(self.val, i);
+            let val = (visit.body.vt.get_ref)(self.val, i);
             let mut sub = VeyVisitor {
                 armory: self.armory,
                 depth,
@@ -427,8 +389,8 @@ impl<'a> BodyVisitor for VeyVisitor<'a> {
             };
         }
         let len = (visit.body.vt.len)(self.val);
-        let kty = visit.body.keys.type_id();
-        let vty = visit.body.vals.type_id();
+        let kty = &visit.body.keys;
+        let vty = &visit.body.vals;
         if len == 0 {
             print!("{{}}");
             return Ok(());
@@ -539,7 +501,7 @@ pub type PrimitiveConverter = Box<dyn for<'lua, 'out> Fn(&'lua rlua::Lua, rlua::
 pub struct Mun {
     armory: Armory,
     convert_primitive: HashMap<
-        (LuaType, TypeId),
+        (LuaType, Ty),
         PrimitiveConverter,
     >, // i swear this was completely unintentional
 }
@@ -579,13 +541,13 @@ impl Mun {
             Ok(())
         };
         self.convert_primitive.insert(
-            (lt, TypeId::of::<T>()),
+            (lt, Ty::of::<T>()),
             Box::new(c),
         );
     }
-    pub fn scabbard<T: AnyDebug>(&self) -> Result<&Scabbard, rlua::Error> {
-        self.armory.scabbards.get(&TypeId::of::<T>())
-            .ok_or_else(|| rlua::Error::RuntimeError(format!("{} has no scabbard", type_name::<T>())))
+    pub fn sword<T: AnyDebug>(&self) -> Result<&Sword, rlua::Error> {
+        self.armory.swords.get(&Ty::of::<T>())
+            .ok_or_else(|| rlua::Error::RuntimeError(format!("{} has no sword", type_name::<T>())))
     }
     pub fn create<T: AnyDebug>(
         &self,
@@ -593,8 +555,8 @@ impl Mun {
         src: rlua::Value,
     ) -> Result<T, rlua::Error> {
         let mut ret = Option::<T>::None;
-        let scabbard = self.scabbard::<T>()?;
-        self.create0(lua, src, &mut ret, scabbard)?;
+        let sword = self.sword::<T>()?;
+        self.create0(lua, src, &mut ret, sword)?;
         ret
             .ok_or_else(|| rlua::Error::RuntimeError(format!("{} value not created", type_name::<T>())))
     }
@@ -603,7 +565,7 @@ impl Mun {
         lua: &rlua::Lua,
         src: rlua::Value,
         dst: AnyOptionT,
-        scabbard: &Scabbard,
+        sword: &Sword,
     ) -> Result<(), rlua::Error> {
         let mut visitor = MunVisitor {
             mun: self,
@@ -615,7 +577,7 @@ impl Mun {
                 part: CtxPart::Head,
             },
         };
-        self.armory.visit_scabbard(scabbard, &mut visitor)
+        self.armory.visit_sword(sword, &mut visitor)
     }
 }
 
@@ -694,10 +656,10 @@ struct MunVisitor<'a, 'lua, 'dst> {
 }
 impl<'a, 'lua, 'dst> BodyVisitor for MunVisitor<'a, 'lua, 'dst> {
     type Err = rlua::Error;
-    fn visit_primitive(&mut self, visit: Visit<TypeId>) -> Result<(), rlua::Error> {
+    fn visit_primitive(&mut self, visit: Visit<Ty>) -> Result<(), rlua::Error> {
         let key = (
             LuaType::from(&self.src),
-            visit.item.type_id(),
+            visit.item.ty,
         );
         if let Some(prim) = self.mun.convert_primitive.get(&key) {
             let val = self.src.take();
@@ -707,8 +669,8 @@ impl<'a, 'lua, 'dst> BodyVisitor for MunVisitor<'a, 'lua, 'dst> {
             self.ctx.write(&mut path);
             Err(rlua::Error::FromLuaConversionError {
                 from: key.0.name(),
-                to: self.mun.armory.scabbards.get(&key.1)
-                    .map(|s| (s.item.ty)().name)
+                to: self.mun.armory.swords.get(&key.1)
+                    .map(|s| s.item.ty.name)
                     .unwrap_or("<type not registered>"),
                 message: Some(format!("in {}", path)),
             })
@@ -736,8 +698,7 @@ impl<'a, 'lua, 'dst> BodyVisitor for MunVisitor<'a, 'lua, 'dst> {
                     part: CtxPart::Field(field.name),
                 };
                 let mut sub = MunVisitor { mun, lua, src, dst, ctx: sub };
-                let ty = field.type_id();
-                err = ctx.ctx(mun.armory.visit(ty, &mut sub));
+                err = ctx.ctx(mun.armory.visit(&field.ty, &mut sub));
             }
         });
         err
@@ -747,11 +708,11 @@ impl<'a, 'lua, 'dst> BodyVisitor for MunVisitor<'a, 'lua, 'dst> {
         let err = |from: &'static str, message: &str| -> Result<(), rlua::Error> {
             Err(rlua::Error::FromLuaConversionError {
                 from,
-                to: (visit.item.ty)().name,
+                to: visit.item.ty.name,
                 message: Some(format!("{}", message)),
             })
         };
-        let tag = visit.item.guarded::<EnumTag>().unwrap_or(&EnumTag::External);
+        let tag = visit.item.guard::<EnumTag>().unwrap_or(&EnumTag::External);
         let src = match &self.src {
             rlua::Value::Table(src) => src,
             // FIXME: `nil`-forbidding guard?
@@ -909,7 +870,7 @@ impl<'a, 'lua, 'dst> BodyVisitor for MunVisitor<'a, 'lua, 'dst> {
                 match visit.body.body_type {
                     BodyType::Unit => (),
                     BodyType::Tuple => {
-                        let mut i = 0;
+                        let mut i = 0i32;
                         (visit.body.init)(self.dst, &mut |dst: AnyOptionT| {
                             if err.is_err() { return; }
                             if let Some(field) = fields.next() {
@@ -926,8 +887,7 @@ impl<'a, 'lua, 'dst> BodyVisitor for MunVisitor<'a, 'lua, 'dst> {
                                     part: CtxPart::Field(field.name),
                                 };
                                 let mut sub = MunVisitor { mun, lua, src, dst, ctx: sub };
-                                let ty = field.type_id();
-                                err = ctx.ctx(mun.armory.visit(ty, &mut sub));
+                                err = ctx.ctx(mun.armory.visit(&field.ty, &mut sub));
                             }
                         });
                     },
@@ -947,8 +907,7 @@ impl<'a, 'lua, 'dst> BodyVisitor for MunVisitor<'a, 'lua, 'dst> {
                                     part: CtxPart::Field(field.name),
                                 };
                                 let mut sub = MunVisitor { mun, lua, src, dst, ctx: sub };
-                                let ty = field.type_id();
-                                err = ctx.ctx(mun.armory.visit(ty, &mut sub));
+                                err = ctx.ctx(mun.armory.visit(&field.ty, &mut sub));
                             }
                         });
                     },
@@ -962,16 +921,17 @@ impl<'a, 'lua, 'dst> BodyVisitor for MunVisitor<'a, 'lua, 'dst> {
     fn visit_map(&mut self, visit: Visit<BodyMap>) -> Result<(), rlua::Error> {
         let src: rlua::Table = FromLua::from_lua(self.src.clone(), self.lua)?;
         let mut src = src.pairs();
-        let kty = visit.body.keys.type_id();
-        let vty = visit.body.vals.type_id();
-        let ks = self.mun.armory.scabbards.get(&kty).expect("key missing scabbard");
-        let vs = self.mun.armory.scabbards.get(&vty).expect("val missing scabbard");
+        let kty = &visit.body.keys;
+        let vty = &visit.body.vals;
+        let ks = self.mun.armory.swords.get(kty).expect("key missing sword");
+        let vs = self.mun.armory.swords.get(vty).expect("val missing sword");
         let mut res = Ok(());
         let mun = &self.mun;
         let lua = self.lua;
         let ctx = &self.ctx;
-        let mut i = 1; // FIXME: Not very informative.
-        (visit.body.vt.collect)(self.dst, None /* FIXME: reserve */, &mut |key: AnyOptionT, val: AnyOptionT| {
+        let mut i = 1;
+        let hint = src.size_hint().1;
+        (visit.body.vt.collect)(self.dst, hint, &mut |key: AnyOptionT, val: AnyOptionT| {
             if let Some(Ok(kv)) = src.next() {
                 let ctx = Ctx {
                     parent: Some(ctx),
@@ -984,7 +944,7 @@ impl<'a, 'lua, 'dst> BodyVisitor for MunVisitor<'a, 'lua, 'dst> {
                         dst: key,
                         ctx: ctx.clone(),
                     };
-                    res = mun.armory.visit_scabbard(ks, &mut visitor);
+                    res = mun.armory.visit_sword(ks, &mut visitor);
                 }
                 if res.is_err() { return; }
                 {
@@ -994,7 +954,7 @@ impl<'a, 'lua, 'dst> BodyVisitor for MunVisitor<'a, 'lua, 'dst> {
                         dst: val,
                         ctx,
                     };
-                    res = mun.armory.visit_scabbard(vs, &mut visitor);
+                    res = mun.armory.visit_sword(vs, &mut visitor);
                 }
             }
             i += 1;
@@ -1020,14 +980,14 @@ impl Mark {
     }
     pub fn value(&self, mut out: impl fmt::Write, var: &'static str, val: &dyn AnyDebug) -> fmt::Result {
         write!(out, "{} = ", var)?;
+        let ty = val.get_ty();
         let mut m = MarkVisitor {
             armory: &self.armory,
             val,
             out: &mut out,
             depth: 0,
         };
-        let ty = <dyn AnyDebug>::type_id(val);
-        self.armory.visit(ty, &mut m)
+        self.armory.visit(&ty, &mut m)
     }
 }
 struct MarkVisitor<'a, W: fmt::Write> {
@@ -1047,20 +1007,20 @@ impl<'a, W: fmt::Write> MarkVisitor<'a, W> {
             if first { first = false; }
             else { write!(self.out, ", ")?; }
             self.val = (field.as_ref)(val);
-            self.armory.visit(field.type_id(), self)?;
+            self.armory.visit(&field.ty, self)?;
         }
         Ok(())
     }
 }
 impl<'a, W: fmt::Write> BodyVisitor for MarkVisitor<'a, W> {
     type Err = fmt::Error;
-    fn visit_primitive(&mut self, _visit: Visit<TypeId>) -> fmt::Result {
+    fn visit_primitive(&mut self, _visit: Visit<Ty>) -> fmt::Result {
         write!(self.out, "{:?}", self.val)
     }
     fn visit_struct(&mut self, visit: Visit<BodyStruct>) -> fmt::Result {
         let val = self.val;
         match visit.body.body_type {
-            BodyType::Unit => return write!(self.out, "{{}}"), // FIXME: Is this enough?
+            BodyType::Unit => return write!(self.out, "{{}}"),
             BodyType::Tuple => {
                 write!(self.out, "{{ ")?;
                 let mut first = true;
@@ -1068,7 +1028,7 @@ impl<'a, W: fmt::Write> BodyVisitor for MarkVisitor<'a, W> {
                     if first { first = false; }
                     else { write!(self.out, ", ")?; }
                     self.val = (field.as_ref)(val);
-                    self.armory.visit(field.type_id(), self)?;
+                    self.armory.visit(&field.ty, self)?;
                 }
                 self.val = val;
                 write!(self.out, " }}")
@@ -1080,7 +1040,7 @@ impl<'a, W: fmt::Write> BodyVisitor for MarkVisitor<'a, W> {
                     self.indent();
                     write!(self.out, "{} = ", field.name)?; // FIXME: Assumes lua likes this name.
                     self.val = (field.as_ref)(val);
-                    self.armory.visit(field.type_id(), self)?;
+                    self.armory.visit(&field.ty, self)?;
                     writeln!(self.out, ",")?;
                 }
                 self.val = val;
@@ -1091,13 +1051,13 @@ impl<'a, W: fmt::Write> BodyVisitor for MarkVisitor<'a, W> {
         }
     }
     fn visit_enum(&mut self, visit: Visit<BodyEnum>) -> fmt::Result {
-        let discrim = (visit.body.discrim)(self.val);
+        let discrim = (visit.body.variant_index)(self.val);
         let variant = &visit.body.variants[discrim];
         if variant.is_unit() {
             return write!(self.out, "{:?}", variant.name);
         }
-        // FIXME: #[repr(_)] discrim = ???
-        let tag = visit.item.guarded::<EnumTag>().unwrap_or(&EnumTag::External);
+        // FIXME: Rust supports custom representation for individual variants, eg enum A { B=3 }
+        let tag = visit.item.guard::<EnumTag>().unwrap_or(&EnumTag::External);
         // Ok(3) becomes ...
         match tag {
             // { Ok = { 3 } }
@@ -1131,8 +1091,8 @@ impl<'a, W: fmt::Write> BodyVisitor for MarkVisitor<'a, W> {
     fn visit_map(&mut self, visit: Visit<BodyMap>) -> fmt::Result {
         writeln!(self.out, "{{")?;
         self.depth += 1;
-        let key_ty = visit.body.keys.type_id();
-        let val_ty = visit.body.vals.type_id();
+        let key_ty = &visit.body.keys;
+        let val_ty = &visit.body.vals;
         (visit.body.vt.iter_items)(self.val, &mut |iter: &mut dyn Iterator<Item=(AnyKey, &dyn AnyDebug)>| {
             for (key, val) in iter {
                 self.indent();
@@ -1172,8 +1132,8 @@ pub type ReadPrim<C, R> = for<'w, 'out> fn(C, &'w mut R, AnyOptionT<'out>) -> DR
 pub type WritePrim<C, W> = fn(C, &mut W, &dyn AnyDebug) -> EResult;
 pub struct Eel<C: Config, R: Read, W: Write> {
     armory: Armory,
-    prim_read: HashMap<TypeId, ReadPrim<C, R>>,
-    prim_write: HashMap<TypeId, WritePrim<C, W>>,
+    prim_read: HashMap<Ty, ReadPrim<C, R>>,
+    prim_write: HashMap<Ty, WritePrim<C, W>>,
     // FIXME: Ought not mix read & write...
     // Eg it's very reasonable to need multiple readers but only 1 writer
 }
@@ -1213,13 +1173,13 @@ impl<C: Config, R: Read, W: Write> Eel<C, R, W> {
             *out = Some(bincode::decode_from_std_read(fd, cfg)?);
             Ok(())
         };
-        self.prim_read.insert(TypeId::of::<T>(), f);
+        self.prim_read.insert(Ty::of::<T>(), f);
         let f = |cfg: C, out: &mut W, val: &dyn AnyDebug| -> EResult {
             let val: &T = val.downcast_ref().expect("type mismatch");
             bincode::encode_into_std_write::<&T, C, W>(val, out, cfg)?;
             Ok(())
         };
-        self.prim_write.insert(TypeId::of::<T>(), f);
+        self.prim_write.insert(Ty::of::<T>(), f);
     }
     pub fn read<T: AnyDebug>(&self, cfg: C, read: &mut R) -> Result<T, DecodeError> {
         let mut out = Option::<T>::None;
@@ -1230,8 +1190,8 @@ impl<C: Config, R: Read, W: Write> Eel<C, R, W> {
             read,
             dst: &mut out,
         };
-        let ty = TypeId::of::<T>();
-        self.armory.visit(ty, &mut reader)?;
+        let ty = Ty::of::<T>();
+        self.armory.visit(&ty, &mut reader)?;
         out.ok_or_else(|| DecodeError::OtherString(format!("value not created")))
     }
     pub fn write(&self, cfg: C, write: &mut W, val: &dyn AnyDebug) -> EResult {
@@ -1242,20 +1202,20 @@ impl<C: Config, R: Read, W: Write> Eel<C, R, W> {
             write,
             val,
         };
-        let ty = <dyn AnyDebug>::type_id(val);
-        self.armory.visit(ty, &mut writer)
+        let ty = val.get_ty();
+        self.armory.visit(&ty, &mut writer)
     }
 }
 struct DeSirEelIce<'a, 'dst, C: Config, R: Read> {
     armory: &'a Armory,
-    prim_read: &'a HashMap<TypeId, ReadPrim<C, R>>,
+    prim_read: &'a HashMap<Ty, ReadPrim<C, R>>,
     cfg: C,
     read: &'a mut R,
     dst: AnyOptionT<'dst>,
 }
 impl<'a, 'dst, C: Config, R: Read> BodyVisitor for DeSirEelIce<'a, 'dst, C, R> {
     type Err = DecodeError;
-    fn visit_primitive(&mut self, visit: Visit<TypeId>) -> Result<(), Self::Err> {
+    fn visit_primitive(&mut self, visit: Visit<Ty>) -> Result<(), Self::Err> {
         let reader = self.prim_read.get(&visit.body).expect("unknown type");
         reader(self.cfg, self.read, self.dst)
     }
@@ -1270,8 +1230,7 @@ impl<'a, 'dst, C: Config, R: Read> BodyVisitor for DeSirEelIce<'a, 'dst, C, R> {
             if ret.is_err() { return; }
             if let Some(field) = fields.next() {
                 let mut sub = DeSirEelIce { armory, prim_read, cfg, read, dst };
-                let ty = field.type_id();
-                ret = armory.visit(ty, &mut sub);
+                ret = armory.visit(&field.ty, &mut sub);
             }
         });
         ret
@@ -1282,7 +1241,7 @@ impl<'a, 'dst, C: Config, R: Read> BodyVisitor for DeSirEelIce<'a, 'dst, C, R> {
             bincode::decode_from_std_read(self.read, cfg)?
         };
         let variant = if let Some(variant) = visit.body.variants.get(discrim) {
-            // NB/FIXME: our 'variant index' is not Rust's.
+            // NB: our 'variant index' is not Rust's.
             variant
         } else {
             return Err(DecodeError::UnexpectedVariant {
@@ -1301,8 +1260,7 @@ impl<'a, 'dst, C: Config, R: Read> BodyVisitor for DeSirEelIce<'a, 'dst, C, R> {
             if ret.is_err() { return; }
             if let Some(field) = fields.next() {
                 let mut sub = DeSirEelIce { armory, prim_read, cfg, read, dst };
-                let ty = field.type_id();
-                ret = armory.visit(ty, &mut sub);
+                ret = armory.visit(&field.ty, &mut sub);
             }
         });
         ret
@@ -1312,7 +1270,7 @@ impl<'a, 'dst, C: Config, R: Read> BodyVisitor for DeSirEelIce<'a, 'dst, C, R> {
             let cfg = bincode::config::standard();
             bincode::decode_from_std_read(self.read, cfg)?
         };
-        let ty = visit.body.items.with(|w| w.item.type_id());
+        let ty = &visit.body.items;
         let mut ret = Ok(());
         let mut i = 0;
         let armory = self.armory;
@@ -1336,8 +1294,8 @@ impl<'a, 'dst, C: Config, R: Read> BodyVisitor for DeSirEelIce<'a, 'dst, C, R> {
             let cfg = bincode::config::standard();
             bincode::decode_from_std_read(self.read, cfg)?
         };
-        let key_ty = visit.body.keys.with(|w| (w.ty)().id);
-        let val_ty = visit.body.vals.with(|w| (w.ty)().id);
+        let key_ty = &visit.body.keys;
+        let val_ty = &visit.body.vals;
         let mut ret = Ok(());
         let mut i = 0;
         let armory = self.armory;
@@ -1365,15 +1323,15 @@ impl<'a, 'dst, C: Config, R: Read> BodyVisitor for DeSirEelIce<'a, 'dst, C, R> {
 }
 struct SirEelIce<'a, C: Config, W: Write> {
     armory: &'a Armory,
-    prim_write: &'a HashMap<TypeId, WritePrim<C, W>>,
+    prim_write: &'a HashMap<Ty, WritePrim<C, W>>,
     cfg: C,
     write: &'a mut W,
     val: &'a dyn AnyDebug,
 }
 impl<'a, C: Config, W: Write> BodyVisitor for SirEelIce<'a, C, W> {
     type Err = EncodeError;
-    fn visit_primitive(&mut self, _visit: Visit<TypeId>) -> Result<(), Self::Err> {
-        let ty = <dyn AnyDebug>::type_id(self.val);
+    fn visit_primitive(&mut self, _visit: Visit<Ty>) -> Result<(), Self::Err> {
+        let ty = self.val.get_ty();
         let writer = self.prim_write.get(&ty).expect("unknown type");
         writer(self.cfg, self.write, self.val)
     }
@@ -1386,19 +1344,19 @@ impl<'a, C: Config, W: Write> BodyVisitor for SirEelIce<'a, C, W> {
                 write: self.write,
                 val: field.get_ref(self.val),
             };
-            let ty = <dyn AnyDebug>::type_id(sub.val);
-            self.armory.visit(ty, &mut sub)?;
+            let ty = sub.val.get_ty();
+            self.armory.visit(&ty, &mut sub)?;
         }
         Ok(())
     }
     fn visit_enum(&mut self, visit: Visit<BodyEnum>) -> Result<(), Self::Err> {
-        let discrim: usize = (visit.body.discrim)(self.val);
+        let discrim: usize = (visit.body.variant_index)(self.val);
         {
             let cfg = bincode::config::standard();
             bincode::encode_into_std_write(discrim, self.write, cfg)
                 .map(|_| ())?;
         }
-        // NB/FIXME: our 'variant index' is not Rust's.
+        // NB: our 'variant index' is not Rust's.
         let variant = &visit.body.variants[discrim];
         for field in variant.fields.iter() {
             let mut sub = SirEelIce {
@@ -1408,8 +1366,8 @@ impl<'a, C: Config, W: Write> BodyVisitor for SirEelIce<'a, C, W> {
                 write: self.write,
                 val: field.get_ref(self.val),
             };
-            let ty = <dyn AnyDebug>::type_id(sub.val);
-            self.armory.visit(ty, &mut sub)?;
+            let ty = sub.val.get_ty();
+            self.armory.visit(&ty, &mut sub)?;
         }
         Ok(())
     }
@@ -1420,7 +1378,7 @@ impl<'a, C: Config, W: Write> BodyVisitor for SirEelIce<'a, C, W> {
             bincode::encode_into_std_write(len, self.write, cfg)
                 .map(|_| ())?;
         }
-        let ty = visit.body.items.with(|w| w.item.type_id());
+        let ty = &visit.body.items;
         let mut ret = Ok(());
         (visit.body.vt.iter)(self.val, &mut |iter: &mut dyn Iterator<Item=&dyn AnyDebug>| {
             for val in iter {
@@ -1447,8 +1405,8 @@ impl<'a, C: Config, W: Write> BodyVisitor for SirEelIce<'a, C, W> {
             bincode::encode_into_std_write(len, self.write, cfg)
                 .map(|_| ())?;
         }
-        let key_ty = visit.body.keys.type_id();
-        let val_ty = visit.body.vals.type_id();
+        let key_ty = &visit.body.keys;
+        let val_ty = &visit.body.vals;
         let mut ret = Ok(());
         (visit.body.vt.iter_items)(self.val, &mut |iter: &mut dyn Iterator<Item=(AnyKey, &dyn AnyDebug)>| {
             for (key, val) in iter {

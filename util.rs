@@ -1,5 +1,5 @@
 use std::fmt;
-use std::any::{type_name, Any, TypeId};
+use std::any::{type_name, Any};
 use std::hash;
 use crate::Name;
 use std::alloc::Layout;
@@ -48,7 +48,7 @@ impl<'a> FieldInit<'a> {
                     let field = field.take().unwrap_or_else(|| Self::taken());
                     (field, next)
                 } else {
-                    // FIXME: make this cold
+                    // FIXME: make this cold (harder than it looks)
                     panic!("Expected value of type {}, found: {:?}", type_name::<T>(), field)
                 }
             },
@@ -68,6 +68,9 @@ pub struct Uninit<T: Any> {
 impl<T: Any> Default for Uninit<T> {
     fn default() -> Self { Self::new() }
 }
+
+const _A: crate::TODO = crate::TODO;
+#[allow(dead_code)] // FIXME: library
 impl<T: Any> Uninit<T> {
     pub fn new() -> Self {
         Uninit {
@@ -115,53 +118,9 @@ impl<'a> Init<'a> {
     }
 }
 
-#[derive(Clone)]
-pub enum CowBox<T: 'static> {
-    Own(Box<T>),
-    Init(fn() -> T),
-}
-impl<T: 'static + fmt::Debug> fmt::Debug for CowBox<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.with(|a| {
-            write!(f, "{:?}", a)
-        })
-    }
-}
-impl<T: 'static + fmt::Display> fmt::Display for CowBox<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.with(|a| {
-            write!(f, "{}", a)
-        })
-    }
-}
-impl<T: 'static> CowBox<T> {
-    pub fn as_own(&mut self) -> &mut T {
-        let init = match self {
-            CowBox::Own(v) => return v,
-            CowBox::Init(f) => Box::new(f()),
-        };
-        *self = CowBox::Own(init);
-        match self {
-            CowBox::Own(v) => v,
-            CowBox::Init(_) => unreachable!(),
-        }
-    }
-    pub fn with<R, F: FnOnce(&T) -> R>(&self, f: F) -> R {
-        let hold;
-        let hold = match self {
-            CowBox::Own(s) => &s,
-            CowBox::Init(f) => {
-                hold = f();
-                &hold
-            },
-        };
-        f(hold)
-    }
-}
-
 #[derive(Copy, Clone, Eq)]
 pub struct Ty {
-    pub id: TypeId,
+    pub id: NonStaticTypeId,
     pub name: Name,
     pub layout: Layout,
 }
@@ -176,9 +135,9 @@ impl PartialEq for Ty {
     }
 }
 impl Ty {
-    pub fn of<T: Any>() -> Ty {
+    pub fn of<T>() -> Ty {
         Ty {
-            id: TypeId::of::<T>(),
+            id: NonStaticTypeId::of::<T>(),
             name: type_name::<T>(),
             layout: Layout::new::<T>(),
         }
@@ -189,6 +148,19 @@ pub trait AnyDebug: mopa::Any + fmt::Debug + Send + Sync {
     fn type_name<'a>(&'a self) -> &'static str {
         type_name::<Self>()
     }
+    fn get_ty(&self) -> Ty;
 }
 mopafy!(AnyDebug);
-impl<X: mopa::Any + fmt::Debug + Send + Sync> AnyDebug for X {}
+impl<X: mopa::Any + fmt::Debug + Send + Sync> AnyDebug for X {
+    fn get_ty(&self) -> Ty {
+        Ty::of::<Self>()
+    }
+}
+
+#[derive(PartialEq, Eq, Hash, Copy, Clone)]
+pub struct NonStaticTypeId(usize);
+impl NonStaticTypeId {
+    pub fn of<T>() -> Self {
+        Self(Self::of::<T> as usize)
+    }
+}

@@ -13,11 +13,11 @@ use syn::spanned::Spanned;
 use quote::{quote, ToTokens};
 
 // Foo
-// Foo => || Bar
 #[derive(Debug)]
 struct Guard {
     event: Expr,
-    handle: Option<Expr>,
+    // Foo => || Bar
+    //handle: Option<Expr>,
 }
 #[derive(Debug)]
 struct Guards {
@@ -27,7 +27,7 @@ struct Guards {
 }
 /*struct Init {
     _eq: Token![=],
-    expr: Expr, // FIXME: Roll our own Expr that doesn't need crate:syn#full
+    expr: Expr,
     // Just need [^,{where}]*
 }*/
 struct Name {
@@ -51,7 +51,6 @@ struct Variant {
     //guards: Option<Guards>,
 }
 enum Blade {
-    // FIXME: Generics? Will they work naturally?
     Enum {
         _enum: Token![enum],
         name: Path,
@@ -120,12 +119,12 @@ pub fn blade_impl(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
                             variant_init = quote! {
                                 #unit(#({
                                     let mut f = Option::<#field_ty>::None;
-                                    each(&mut f);
+                                    _each(&mut f);
                                     if let Some(f) = f { f } else { return }
                                 }),*)
                             };
                             for (i, field) in fields.iter().enumerate() {
-                                let guards = collect_guards(field.guards.as_ref());
+                                let guards = collect_guards(field.guards.as_ref(), &quote![rt::Field]);
                                 let pick = (0..fields.len())
                                     .map(|j| {
                                         if i == j {
@@ -139,9 +138,9 @@ pub fn blade_impl(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
                                 let ty = field.ty.to_token_stream();
                                 fields_out = quote! {
                                     #fields_out
-                                    Field {
+                                    Arc::new(Field {
                                         name: #field_name,
-                                        ty: Ty::of::<#ty>,
+                                        ty: Ty::of::<#ty>(),
                                         as_ref: |s: &dyn AnyDebug| -> &dyn AnyDebug {
                                             if let #unit(#pick) = Self::downcast_ref(s) {
                                                 pick
@@ -158,7 +157,7 @@ pub fn blade_impl(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
                                         },
                                         with: |f: &mut dyn FnMut(AnyOptionT)| f(&mut Option::<Self>::None),
                                         guards: #guards,
-                                    },
+                                    }),
                                 };
                             }
                         } else if let Inner { brace: Some(_), .. } = inner {
@@ -174,22 +173,22 @@ pub fn blade_impl(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
                                     #unit {
                                         #(#field: {
                                             let mut f = Option::<#field_ty>::None;
-                                            each(&mut f);
+                                            _each(&mut f);
                                             if let Some(f) = f { f } else { return }
                                         }),*
                                     }
                                 };
                             }
                             for field in fields {
-                                let guards = collect_guards(field.guards.as_ref());
+                                let guards = collect_guards(field.guards.as_ref(), &quote![rt::Field]);
                                 let pick = &field.name.as_ref().unwrap().name;
                                 let field_name = format!("{}", pick);
                                 let ty = field.ty.to_token_stream();
                                 fields_out = quote! {
                                     #fields_out
-                                    Field {
+                                    Arc::new(Field {
                                         name: #field_name,
-                                        ty: Ty::of::<#ty>,
+                                        ty: Ty::of::<#ty>(),
                                         as_ref: |s: &dyn AnyDebug| -> &dyn AnyDebug {
                                             if let #unit { #pick, .. } = Self::downcast_ref(s) {
                                                 #pick
@@ -206,7 +205,7 @@ pub fn blade_impl(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
                                         },
                                         with: |f: &mut dyn FnMut(AnyOptionT)| f(&mut Option::<Self>::None),
                                         guards: #guards,
-                                    },
+                                    }),
                                 };
                             }
                         } else {
@@ -216,26 +215,26 @@ pub fn blade_impl(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 }
                 variants_out = quote! {
                     #variants_out
-                    Variant {
+                    Arc::new(Variant {
                         name: #unit_str,
                         body_type: BodyType::#body_type,
-                        fields: Cow::Borrowed(&[#fields_out]),
-                        init: |out: AnyOptionT, each: &mut dyn FnMut(AnyOptionT)| {
+                        fields: vec![#fields_out],
+                        init: |out: AnyOptionT, _each: &mut dyn FnMut(AnyOptionT)| {
                             let out: &mut Option<Self> = out.downcast_mut().unwrap();
                             *out = Some(#variant_init);
                         },
-                    },
+                    }),
                 };
             }
             body_out = quote! {
-                Body::Enum(BodyEnum {
-                    variants: Cow::Borrowed(&[#variants_out]),
-                    discrim: |s: &dyn AnyDebug| -> usize {
+                Body::Enum(Arc::new(BodyEnum {
+                    variants: vec![#variants_out],
+                    variant_index: |s: &dyn AnyDebug| -> usize {
                         match Self::downcast_ref(s) {
                             #discrim_out
                         }
                     },
-                })
+                }))
             };
         },
         Blade::Struct { name, fields, ..  } => {
@@ -270,13 +269,13 @@ pub fn blade_impl(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
                         span: field.ty.span(),
                     }), quote! { #str_i })
                 };
-                let guards = collect_guards(field.guards.as_ref());
+                let guards = collect_guards(field.guards.as_ref(), &quote![rt::Struct]);
                 let ty = field.ty.to_token_stream();
                 body = quote! {
                     #body
-                    Field {
+                    Arc::new(Field {
                         name: #str_name,
-                        ty: Ty::of::<#ty>,
+                        ty: Ty::of::<#ty>(),
                         as_ref: |s: &dyn AnyDebug| -> &dyn AnyDebug {
                             &Self::downcast_ref(s).#field_name
                         },
@@ -285,7 +284,7 @@ pub fn blade_impl(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
                         },
                         with: |f: &mut dyn FnMut(AnyOptionT)| f(&mut Option::<Self>::None),
                         guards: #guards,
-                    },
+                    }),
                 };
             }
             {
@@ -324,9 +323,9 @@ pub fn blade_impl(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
             let field_name = fields.iter().map(|field| &field.name.as_ref().unwrap().name);
             let field_type = fields.iter().map(|field| field.ty.to_token_stream());
             body_out = quote! {
-                Body::Struct(BodyStruct {
+                Body::Struct(Arc::new(BodyStruct {
                     body_type: BodyType::#body_type,
-                    fields: Cow::Borrowed(&[#body]),
+                    fields: vec![#body],
                     init: |out: AnyOptionT, each: &mut dyn FnMut(AnyOptionT)| {
                         let out: &mut Option<Self> = out.downcast_mut().unwrap();
                         let this = Self {#(
@@ -338,44 +337,60 @@ pub fn blade_impl(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
                         )*};
                         *out = Some(this);
                     },
-                })
+                }))
             };
         },
     };
     let item_guards = match &blade {
         Blade::Enum { guards, .. } | Blade::Struct { guards, .. } => {
-            collect_guards(Some(guards))
+            collect_guards(Some(guards), &quote![rt::Item])
         },
     };
     let tokens = quote::quote! {{
         use crate::sir::prelude_macro::*;
-        Scabbard {
-            item: Item {
-                ty: Ty::of::<#this>,
+        Sword {
+            item: Arc::new(Item {
+                ty: Ty::of::<#this>(),
                 guards: #item_guards,
                 body: #body_out,
-            },
-            init: Cow::Borrowed(&[#init_out]),
+            }),
+            init: vec![#init_out],
         }
     }};
 
-    /*{
+    if option_env!("LOG_BLADE_IMPL_MACRO").is_some() {
         use std::process::*;
         use std::io::Write;
         use std::fs::File;
-        if let Ok(mut o) = File::create("/tmp/a.rs") {
-            if write!(o, "const SCABBARD: Scabbard = {};", tokens).is_ok() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static COUNT: AtomicUsize = AtomicUsize::new(0);
+        let n = COUNT.fetch_add(1, Ordering::SeqCst);
+        let path = format!("/tmp/blade_impl_{}.rs", n);
+        let path: &str = &path;
+        if let Ok(mut o) = File::create(path) {
+            if write!(o, "fn deleteme() {{ {} }}", tokens).is_ok() {
                 Command::new("rustfmt")
-                    .arg("/tmp/a.rs")
-                    .spawn()
-                    .ok();
-                Command::new("vi")
-                    .args(&["-es", "-c", r#"%g/\(as_ref:\|as_mut: \).*{$/join 7 | :x"#, "/tmp/a.rs"])
-                    .spawn()
-                    .ok();
+                    .arg(path)
+                    .status()
+                    .expect("rustfmt failed");
+                use std::io::BufRead;
+                let back = std::io::BufReader::new(File::open(path).unwrap());
+                let mut lines = back.lines().map(std::result::Result::unwrap).collect::<Vec<String>>();
+                let com = |s: &mut String| {
+                    let f = format!("// {}", s);
+                    *s = f;
+                };
+                com(&mut lines[0]);
+                let n = lines.len() - 1;
+                com(&mut lines[n]);
+                let mut back = File::create(path).unwrap();
+                for line in lines {
+                    writeln!(back, "{}", line).ok();
+                }
+                return quote![include! { #path }].into();
             }
         }
-    }*/
+    }
     proc_macro::TokenStream::from(tokens)
 }
 
@@ -390,17 +405,14 @@ enum BodyType {
 impl Parse for Guard {
     fn parse(input: ParseStream) -> Result<Self> {
         let event: Expr = input.parse()?;
-        let handle = if input.peek(Token![=>]) {
+        /*let handle = if input.peek(Token![=>]) {
             let _: Token![=>] = input.parse()?;
             let handle: Expr = input.parse()?;
             Some(handle)
         } else {
             None
-        };
-        Ok(Guard {
-            event,
-            handle,
-        })
+        };*/
+        Ok(Guard { event })
     }
 }
 
@@ -414,35 +426,18 @@ impl Parse for Guards {
         })
     }
 }
-fn collect_guards(guards: Option<&Guards>) -> TokenStream {
+fn collect_guards(guards: Option<&Guards>, position: &TokenStream) -> TokenStream {
     let mut out = quote! {};
     if let Some(guards) = guards {
         for guard in &guards.guards {
             let event = &guard.event;
-            out = if let Some(handle) = &guard.handle {
-                quote! {
-                    #out
-                    Guard {
-                        event: &#event,
-                        handle: &#handle,
-                    },
-                }
-            } else {
-                quote! {
-                    #out
-                    Guard {
-                        event: &#event,
-                        handle: &(),
-                    },
-                }
+            out = quote! {
+                #out
+                Guard::new::<#position, _>(#event),
             };
         }
     }
-    let out = quote! {
-        Cow::Borrowed(&[
-            #out
-        ])
-    };
+    let out = quote![vec![#out]];
     out.into()
 }
 

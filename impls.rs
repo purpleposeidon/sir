@@ -1,7 +1,6 @@
 use crate::util::Ty;
 use crate::rt::*;
 use crate::Blade;
-use crate::util::{FieldInit, Init};
 use std::collections::HashMap;
 use crate::knights::{a2r, a2m};
 use std::sync::Arc;
@@ -43,7 +42,7 @@ impl<T: Blade> Blade for Box<T> {
                         guards: vec![],
                     })],
                     init: |out: AnyOptionT, each: &mut dyn FnMut(AnyOptionT)| {
-                        let out: &mut Option<Box<T>> = out.downcast_mut().unwrap();
+                        let out: &mut Option<Self> = out.downcast_mut().unwrap();
                         let mut inner = Option::<T>::None;
                         each(&mut inner);
                         if let Some(inner) = inner {
@@ -52,10 +51,6 @@ impl<T: Blade> Blade for Box<T> {
                     },
                 })),
             }),
-            init: vec![|mut _field: FieldInit, init: Init| {
-                let (_0, _field) = _field.unpack::<T>();
-                init.with(Box::new(_0));
-            }],
         }
     }
 }
@@ -112,9 +107,6 @@ impl<T: Blade> Blade for Vec<T> {
                     },
                 })),
             }),
-            init: vec![|_field: FieldInit, init: Init| {
-                init.with(Self::default());
-            }],
         }
     }
 }
@@ -196,9 +188,6 @@ where
                     },
                 })),
             }),
-            init: vec![|_field: FieldInit, init: Init| {
-                init.with(Self::default());
-            }],
         }
     }
 }
@@ -214,12 +203,6 @@ macro_rules! impl_primal_blades {
                             guards: vec![],
                             body: Body::Primitive,
                         }),
-                        init: vec![
-                            |mut _field: FieldInit, init: Init| {
-                                let (val, _field) = _field.unpack::<Self>();
-                                init.with(val);
-                            },
-                        ],
                     }
                 }
             }

@@ -17,8 +17,8 @@ use crate::chivalry::EnumTag;
 // Sir Ial - Serializer
 // Sir Vive - Serializer. Or "interact w/ objects defined only dynamically"
 // Sir Eel - Serializer
-// Sir George (Or was it Michael?) - Slayer of dragons, hence compilers, hence JIT. But maybe it
-// should just be Saint George tho.
+// Sir George (Or was it Michael?) - Slayer of dragons, hence compilers, hence does JIT. But maybe it
+// should just be Saint George.
 
 #[doc(hidden)]
 pub fn a2r<R: AnyDebug>(a: &dyn AnyDebug) -> &R {
@@ -38,7 +38,7 @@ pub fn a2m<R: AnyDebug>(a: &mut dyn AnyDebug) -> &mut R {
 
 #[derive(Clone)]
 pub struct Armory {
-    pub(crate) swords: Arc<HashMap<Ty, Sword>>,
+    pub swords: Arc<HashMap<Ty, Sword>>,
 }
 pub struct BuildArmory {
     swords: HashMap<Ty, Sword>,
@@ -49,6 +49,11 @@ impl Default for BuildArmory {
 impl Armory {
     pub fn builder() -> BuildArmory {
         BuildArmory::default()
+    }
+    pub fn empty() -> BuildArmory {
+        BuildArmory {
+            swords: Default::default(),
+        }
     }
 }
 impl BuildArmory {
@@ -62,6 +67,9 @@ impl BuildArmory {
     }
     pub fn add_blade(&mut self, sword: Sword) {
         self.swords.insert(sword.item.ty.clone(), sword);
+    }
+    pub fn remove<T>(&mut self) {
+        self.swords.remove(&Ty::of::<T>());
     }
     pub fn build(mut self) -> Armory {
         use std::cell::RefCell;
@@ -112,7 +120,7 @@ impl BuildArmory {
         }
         let holes = holes.take();
         if !holes.is_empty() {
-            let mut msg = format!("Armory validation failed:\n");
+            let mut msg = format!("\nArmory validation failed:\n");
             for h in &holes {
                 use std::fmt::Write;
                 writeln!(&mut msg, "    {}", h).ok();
@@ -130,7 +138,8 @@ impl Armory {
         ty: &Ty,
         visitor: &mut dyn BodyVisitor<Err=E>,
     ) -> Result<(), E> {
-        let sword = self.swords.get(&ty).expect("missing sword");
+        let sword = self.swords.get(&ty)
+            .unwrap_or_else(|| panic!("missing sword {}", ty));
         self.visit_sword(sword, visitor)
     }
     pub fn visit_sword<'a, E>(
@@ -1118,324 +1127,5 @@ impl<'a, W: fmt::Write> BodyVisitor for MarkVisitor<'a, W> {
         self.depth -= 1;
         self.indent();
         write!(self.out, "}}")
-    }
-}
-
-use std::io::{Read, Write};
-use bincode::config::Config;
-use bincode::de::Decode;
-use bincode::enc::Encode;
-use bincode::error::{DecodeError, EncodeError};
-pub type DResult = Result<(), DecodeError>;
-pub type EResult = Result<(), EncodeError>;
-pub type ReadPrim<C, R> = for<'w, 'out> fn(C, &'w mut R, AnyOptionT<'out>) -> DResult;
-pub type WritePrim<C, W> = fn(C, &mut W, &dyn AnyDebug) -> EResult;
-pub struct Eel<C: Config, R: Read, W: Write> {
-    armory: Armory,
-    prim_read: HashMap<Ty, ReadPrim<C, R>>,
-    prim_write: HashMap<Ty, WritePrim<C, W>>,
-    // FIXME: Ought not mix read & write...
-    // Eg it's very reasonable to need multiple readers but only 1 writer
-}
-impl<C: Config, R: Read, W: Write> Eel<C, R, W> {
-    pub fn new(armory: &Armory) -> Self {
-        let mut ret = Eel {
-            armory: armory.clone(),
-            prim_read: Default::default(),
-            prim_write: Default::default(),
-        };
-        ret.default_setup();
-        ret
-    }
-    fn default_setup(&mut self) {
-        self.prim::<()>();
-        self.prim::<bool>();
-        self.prim::<i8>();
-        self.prim::<u8>();
-        self.prim::<i16>();
-        self.prim::<u16>();
-        self.prim::<i32>();
-        self.prim::<u32>();
-        self.prim::<i64>();
-        self.prim::<u64>();
-        self.prim::<i128>();
-        self.prim::<u128>();
-        // Too risky.
-        //self.prim::<isize>();
-        //self.prim::<usize>();
-        self.prim::<f32>();
-        self.prim::<f64>();
-        self.prim::<String>();
-    }
-    pub fn prim<T: AnyDebug + Decode + Encode>(&mut self) {
-        let f = |cfg: C, fd: &mut R, out: AnyOptionT| -> DResult {
-            let out: &mut Option<T> = out.downcast_mut().expect("type mismatch");
-            *out = Some(bincode::decode_from_std_read(fd, cfg)?);
-            Ok(())
-        };
-        self.prim_read.insert(Ty::of::<T>(), f);
-        let f = |cfg: C, out: &mut W, val: &dyn AnyDebug| -> EResult {
-            let val: &T = val.downcast_ref().expect("type mismatch");
-            bincode::encode_into_std_write::<&T, C, W>(val, out, cfg)?;
-            Ok(())
-        };
-        self.prim_write.insert(Ty::of::<T>(), f);
-    }
-    pub fn read<T: AnyDebug>(&self, cfg: C, read: &mut R) -> Result<T, DecodeError> {
-        let mut out = Option::<T>::None;
-        let mut reader = DeSirEelIce {
-            armory: &self.armory,
-            prim_read: &self.prim_read,
-            cfg,
-            read,
-            dst: &mut out,
-        };
-        let ty = Ty::of::<T>();
-        self.armory.visit(&ty, &mut reader)?;
-        out.ok_or_else(|| DecodeError::OtherString(format!("value not created")))
-    }
-    pub fn write(&self, cfg: C, write: &mut W, val: &dyn AnyDebug) -> EResult {
-        let mut writer = SirEelIce {
-            armory: &self.armory,
-            prim_write: &self.prim_write,
-            cfg,
-            write,
-            val,
-        };
-        let ty = val.get_ty();
-        self.armory.visit(&ty, &mut writer)
-    }
-}
-struct DeSirEelIce<'a, 'dst, C: Config, R: Read> {
-    armory: &'a Armory,
-    prim_read: &'a HashMap<Ty, ReadPrim<C, R>>,
-    cfg: C,
-    read: &'a mut R,
-    dst: AnyOptionT<'dst>,
-}
-impl<'a, 'dst, C: Config, R: Read> BodyVisitor for DeSirEelIce<'a, 'dst, C, R> {
-    type Err = DecodeError;
-    fn visit_primitive(&mut self, visit: Visit<Ty>) -> Result<(), Self::Err> {
-        let reader = self.prim_read.get(&visit.body).expect("unknown type");
-        reader(self.cfg, self.read, self.dst)
-    }
-    fn visit_struct(&mut self, visit: Visit<BodyStruct>) -> Result<(), Self::Err> {
-        let mut fields = visit.body.fields.iter();
-        let mut ret = Ok(());
-        let armory = self.armory;
-        let prim_read = self.prim_read;
-        let cfg = self.cfg;
-        let read = &mut *self.read;
-        (visit.body.init)(self.dst, &mut |dst: AnyOptionT| {
-            if ret.is_err() { return; }
-            if let Some(field) = fields.next() {
-                let mut sub = DeSirEelIce { armory, prim_read, cfg, read, dst };
-                ret = armory.visit(&field.ty, &mut sub);
-            }
-        });
-        ret
-    }
-    fn visit_enum(&mut self, visit: Visit<BodyEnum>) -> Result<(), Self::Err> {
-        let discrim: usize = {
-            let cfg = bincode::config::standard();
-            bincode::decode_from_std_read(self.read, cfg)?
-        };
-        let variant = if let Some(variant) = visit.body.variants.get(discrim) {
-            // NB: our 'variant index' is not Rust's.
-            variant
-        } else {
-            return Err(DecodeError::UnexpectedVariant {
-                type_name: "<not implemented>",
-                allowed: bincode::error::AllowedEnumVariants::Allowed(&[]),
-                found: discrim as u32,
-            });
-        };
-        let mut fields = variant.fields.iter();
-        let mut ret = Ok(());
-        let armory = self.armory;
-        let prim_read = self.prim_read;
-        let cfg = self.cfg;
-        let read = &mut *self.read;
-        (variant.init)(self.dst, &mut |dst: AnyOptionT| {
-            if ret.is_err() { return; }
-            if let Some(field) = fields.next() {
-                let mut sub = DeSirEelIce { armory, prim_read, cfg, read, dst };
-                ret = armory.visit(&field.ty, &mut sub);
-            }
-        });
-        ret
-    }
-    fn visit_vec(&mut self, visit: Visit<BodyVec>) -> Result<(), Self::Err> {
-        let len: usize = {
-            let cfg = bincode::config::standard();
-            bincode::decode_from_std_read(self.read, cfg)?
-        };
-        let ty = &visit.body.items;
-        let mut ret = Ok(());
-        let mut i = 0;
-        let armory = self.armory;
-        let prim_read = self.prim_read;
-        let cfg = self.cfg;
-        let read = &mut *self.read;
-        (visit.body.vt.collect)(self.dst, Some(len), &mut |dst: AnyOptionT| {
-            if i == len { return; }
-            i += 1;
-            let mut sub = DeSirEelIce { armory, prim_read, cfg, read, dst };
-            let e = armory.visit(ty, &mut sub);
-            if e.is_err() {
-                ret = e;
-                return;
-            }
-        });
-        ret
-    }
-    fn visit_map(&mut self, visit: Visit<BodyMap>) -> Result<(), Self::Err> {
-        let len: usize = {
-            let cfg = bincode::config::standard();
-            bincode::decode_from_std_read(self.read, cfg)?
-        };
-        let key_ty = &visit.body.keys;
-        let val_ty = &visit.body.vals;
-        let mut ret = Ok(());
-        let mut i = 0;
-        let armory = self.armory;
-        let prim_read = self.prim_read;
-        let cfg = self.cfg;
-        let read = &mut *self.read;
-        (visit.body.vt.collect)(self.dst, Some(len), &mut |key: AnyOptionT, val: AnyOptionT| {
-            if i == len { return; }
-            i += 1;
-            let mut sub = DeSirEelIce { armory, prim_read, cfg, read, dst: key };
-            let e = armory.visit(key_ty, &mut sub);
-            if e.is_err() {
-                ret = e;
-                return;
-            }
-            let mut sub = DeSirEelIce { armory, prim_read, cfg, read, dst: val };
-            let e = armory.visit(val_ty, &mut sub);
-            if e.is_err() {
-                ret = e;
-                return;
-            }
-        });
-        ret
-    }
-}
-struct SirEelIce<'a, C: Config, W: Write> {
-    armory: &'a Armory,
-    prim_write: &'a HashMap<Ty, WritePrim<C, W>>,
-    cfg: C,
-    write: &'a mut W,
-    val: &'a dyn AnyDebug,
-}
-impl<'a, C: Config, W: Write> BodyVisitor for SirEelIce<'a, C, W> {
-    type Err = EncodeError;
-    fn visit_primitive(&mut self, _visit: Visit<Ty>) -> Result<(), Self::Err> {
-        let ty = self.val.get_ty();
-        let writer = self.prim_write.get(&ty).expect("unknown type");
-        writer(self.cfg, self.write, self.val)
-    }
-    fn visit_struct(&mut self, visit: Visit<BodyStruct>) -> Result<(), Self::Err> {
-        for field in visit.body.fields.iter() {
-            let mut sub = SirEelIce {
-                armory: self.armory,
-                prim_write: self.prim_write,
-                cfg: self.cfg,
-                write: self.write,
-                val: field.get_ref(self.val),
-            };
-            let ty = sub.val.get_ty();
-            self.armory.visit(&ty, &mut sub)?;
-        }
-        Ok(())
-    }
-    fn visit_enum(&mut self, visit: Visit<BodyEnum>) -> Result<(), Self::Err> {
-        let discrim: usize = (visit.body.variant_index)(self.val);
-        {
-            let cfg = bincode::config::standard();
-            bincode::encode_into_std_write(discrim, self.write, cfg)
-                .map(|_| ())?;
-        }
-        // NB: our 'variant index' is not Rust's.
-        let variant = &visit.body.variants[discrim];
-        for field in variant.fields.iter() {
-            let mut sub = SirEelIce {
-                armory: self.armory,
-                prim_write: self.prim_write,
-                cfg: self.cfg,
-                write: self.write,
-                val: field.get_ref(self.val),
-            };
-            let ty = sub.val.get_ty();
-            self.armory.visit(&ty, &mut sub)?;
-        }
-        Ok(())
-    }
-    fn visit_vec(&mut self, visit: Visit<BodyVec>) -> Result<(), Self::Err> {
-        {
-            let len: usize = (visit.body.vt.len)(self.val);
-            let cfg = bincode::config::standard();
-            bincode::encode_into_std_write(len, self.write, cfg)
-                .map(|_| ())?;
-        }
-        let ty = &visit.body.items;
-        let mut ret = Ok(());
-        (visit.body.vt.iter)(self.val, &mut |iter: &mut dyn Iterator<Item=&dyn AnyDebug>| {
-            for val in iter {
-                let mut sub = SirEelIce {
-                    armory: self.armory,
-                    prim_write: self.prim_write,
-                    cfg: self.cfg,
-                    write: self.write,
-                    val,
-                };
-                let e = self.armory.visit(ty, &mut sub);
-                if e.is_err() {
-                    ret = e;
-                    return;
-                }
-            }
-        });
-        ret
-    }
-    fn visit_map(&mut self, visit: Visit<BodyMap>) -> Result<(), Self::Err> {
-        {
-            let len: usize = (visit.body.vt.len)(self.val);
-            let cfg = bincode::config::standard();
-            bincode::encode_into_std_write(len, self.write, cfg)
-                .map(|_| ())?;
-        }
-        let key_ty = &visit.body.keys;
-        let val_ty = &visit.body.vals;
-        let mut ret = Ok(());
-        (visit.body.vt.iter_items)(self.val, &mut |iter: &mut dyn Iterator<Item=(AnyKey, &dyn AnyDebug)>| {
-            for (key, val) in iter {
-                let mut sub = SirEelIce {
-                    armory: self.armory,
-                    prim_write: self.prim_write,
-                    cfg: self.cfg,
-                    write: self.write,
-                    val: key,
-                };
-                let e = self.armory.visit(key_ty, &mut sub);
-                if e.is_err() {
-                    ret = e;
-                    return;
-                }
-                let mut sub = SirEelIce {
-                    armory: self.armory,
-                    prim_write: self.prim_write,
-                    cfg: self.cfg,
-                    write: self.write,
-                    val,
-                };
-                let e = self.armory.visit(val_ty, &mut sub);
-                if e.is_err() {
-                    ret = e;
-                    return;
-                }
-            }
-        });
-        ret
     }
 }

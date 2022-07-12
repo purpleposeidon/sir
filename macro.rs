@@ -74,7 +74,6 @@ pub fn blade_impl(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let this = match &blade {
         Blade::Enum { name, .. } | Blade::Struct { name, .. } => name,
     };
-    let mut init_out = quote![];
     let body_out;
     let mut variants_out = quote![];
     match &blade {
@@ -90,7 +89,6 @@ pub fn blade_impl(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 match &variant.inner {
                     None => {
                         body_type = quote![Unit];
-                        init_out = quote! { #init_out |_field: FieldInit, init: Init| { init.with(#unit); }, };
                         discrim_out = quote! {
                             #discrim_out
                             #unit => #discrim_id,
@@ -101,17 +99,7 @@ pub fn blade_impl(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
                         let Inner { fields, .. } = inner;
                         if let Inner { paren: Some(_), .. } = inner {
                             body_type = quote![Tuple];
-                            let field_name = fields.iter().enumerate().map(|(i, f)| Ident::new(&format!("_{}", i), f.ty.span())).collect::<Vec<_>>();
                             let field_ty = fields.iter().map(|f| &f.ty).collect::<Vec<_>>();
-                            init_out = quote! {
-                                #init_out
-                                |mut _field: FieldInit, init: Init| {
-                                    #(
-                                        let (#field_name, _field) = _field.unpack::<#field_ty>();
-                                    )*
-                                    init.with(#unit(#(#field_name),*));
-                                },
-                            };
                             discrim_out = quote! {
                                 #discrim_out
                                 #unit(..) => #discrim_id,
@@ -220,7 +208,7 @@ pub fn blade_impl(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
                         body_type: BodyType::#body_type,
                         fields: vec![#fields_out],
                         init: |out: AnyOptionT, _each: &mut dyn FnMut(AnyOptionT)| {
-                            let out: &mut Option<Self> = out.downcast_mut().unwrap();
+                            let out: &mut Option<Self> = out.downcast_mut().expect("wrong type (enum)");
                             *out = Some(#variant_init);
                         },
                     }),
@@ -237,7 +225,7 @@ pub fn blade_impl(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 }))
             };
         },
-        Blade::Struct { name, fields, ..  } => {
+        Blade::Struct { fields, ..  } => {
             let mut body = quote![];
             let body_type = {
                 let mut found = None;
@@ -287,34 +275,6 @@ pub fn blade_impl(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
                     }),
                 };
             }
-            {
-                let field_ty = fields.iter().map(|f| &f.ty).collect::<Vec<_>>();
-                init_out = if body_type == BodyType::Struct {
-                    let field_name = fields.iter().map(|f| &f.name.as_ref().unwrap().name).collect::<Vec<_>>();
-                    quote! {
-                        #init_out
-                        |mut _field: FieldInit, init: Init| {
-                            #(
-                                let (#field_name, _field) = _field.unpack::<#field_ty>();
-                            )*
-                            init.with(#name {
-                                #(#field_name,)*
-                            });
-                        },
-                    }
-                } else {
-                    let field_name = fields.iter().enumerate().map(|(i, f)| Ident::new(&format!("_{}", i), f.ty.span())).collect::<Vec<_>>();
-                    quote! {
-                        #init_out
-                        |mut _field: FieldInit, init: Init| {
-                            #(
-                                let (#field_name, _field) = _field.unpack::<#field_ty>();
-                            )*
-                            init.with(#name(#(#field_name,)*));
-                        },
-                    }
-                };
-            }
             let body_type = match body_type {
                 BodyType::Unit => quote! { Unit },
                 BodyType::Tuple => quote! { Tuple },
@@ -354,7 +314,6 @@ pub fn blade_impl(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 guards: #item_guards,
                 body: #body_out,
             }),
-            init: vec![#init_out],
         }
     }};
 

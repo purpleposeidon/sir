@@ -2,7 +2,7 @@ use std::fmt;
 use std::sync::Arc;
 use crate::Name;
 pub use crate::util::Ty;
-use crate::util::{AnyDebug, FieldInit, Init};
+use crate::util::AnyDebug;
 use crate::chivalry::{SyntaxPosition, ValidAt};
 use std::any::{Any, TypeId};
 use crate::Blade;
@@ -172,7 +172,6 @@ pub struct CollectionMap {
 #[derive(Clone)]
 pub struct Sword {
     pub item: Arc<Item>,
-    pub init: Vec<fn(FieldInit, Init)>,
 }
 impl Sword {
     pub fn of<T: Blade>() -> Self {

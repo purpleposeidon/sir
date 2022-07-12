@@ -74,11 +74,11 @@ pub struct Builder<Ctx, Ret> {
 impl<Ctx, Ret> Builder<Ctx, Ret> {
     // on(|_ctx, phase, visit| -> Ret { … })
     #[track_caller]
-    pub fn on<Phase, Body, Specific>(self, f: fn(&mut Ctx, Phase, Visit<Body, Specific>) -> Ret) -> Self {
+    pub fn on<Phase, Body, Specific>(&mut self, f: fn(&mut Ctx, Phase, Visit<Body, Specific>) -> Ret) -> &mut Self {
         self.on1(f)
     }
     #[track_caller]
-    fn on1<Phase, Body, Specific, Ret2>(mut self, f: fn(&mut Ctx, Phase, Visit<Body, Specific>) -> Ret2) -> Self {
+    fn on1<Phase, Body, Specific, Ret2>(&mut self, f: fn(&mut Ctx, Phase, Visit<Body, Specific>) -> Ret2) -> &mut Self {
         let ptr_size = size_of::<usize>();
         assert_eq!(size_of::<Phase>(), 0);
         assert_eq!(size_of::<&Body>(), ptr_size);
@@ -100,14 +100,14 @@ impl<Ctx, Ret> Builder<Ctx, Ret> {
     }
     /// The function will be called to determine which enum variant to process.
     #[track_caller]
-    pub fn on_enum<Specific>(self, f: fn(&mut Ctx, phase::PickVariant, Visit<rt::BodyEnum, Specific>) -> usize) -> Self {
+    pub fn on_enum<Specific>(&mut self, f: fn(&mut Ctx, phase::PickVariant, Visit<rt::BodyEnum, Specific>) -> usize) -> &mut Self {
         self.on1(f)
     }
     /// The function will be called repeatedly to request process the items of an iterable
     /// structure. Return `false` to indicate that there are no more items to process. `Body` must
     /// be either `rt::BodyVec` or `rt::BodyMap`.
     #[track_caller]
-    pub fn on_iter<Body, Specific>(self, f: fn(&mut Ctx, phase::Iter, Visit<Body, Specific>) -> bool) -> Self {
+    pub fn on_iter<Body, Specific>(&mut self, f: fn(&mut Ctx, phase::Iter, Visit<Body, Specific>) -> bool) -> &mut Self {
         self.on1(f)
     }
     pub fn build(mut self) -> Knight<Ctx, Ret> {
@@ -324,6 +324,7 @@ impl Match<{ops::VISIT_BODY_VEC}> for rt::BodyVec {}
 impl Match<{ops::VISIT_BODY_MAP}> for rt::BodyMap {}
 
 mod ops {
+    //! FIXME: Derp. vt.iter() is not compatible with a VM.
     use super::Op;
     #[cfg(debug_assertions)]
     pub const NOP: Op = 0; // nothing
@@ -362,7 +363,7 @@ mod ops {
 }
 impl<Ctx, Ret, ReadFlow> Compiled<Ctx, Ret, ReadFlow>
 where
-    ReadFlow: Fn(&Ctx, &mut Ret) -> Flow,
+    ReadFlow: Fn(&mut Ctx, &mut Ret) -> Flow,
 {
     // fn exec
     pub fn run(&self, ctx: &mut Ctx, ty: Ty) -> Option<Ret> {
@@ -381,8 +382,9 @@ where
             macro_rules! log {
                 ($($tt:tt)*) => {{
                     let _ = format!($($tt)*);
-                    // print!("{:?} ", ops);
-                    // println!($($tt)*);
+                    //trace!()
+                    print!("{:?} ", ops);
+                    println!($($tt)*);
                 }};
             }
             let next = match these {
@@ -572,8 +574,15 @@ mod ignore_dis {
     }
 }
 
-
-pub fn compile<Ctx, Ret, ReadFlow>(knight: Knight<Ctx, Ret>, armory: &Armory, read_flow: ReadFlow) -> Result<Compiled<Ctx, Ret, ReadFlow>, String> {
+/// For `ReadFlow`, you can use `Flow::continues` or `Flow::result`.
+pub fn compile<Ctx, Ret, ReadFlow>(
+    knight: Knight<Ctx, Ret>,
+    armory: &Armory,
+    read_flow: ReadFlow,
+) -> Result<Compiled<Ctx, Ret, ReadFlow>, String>
+where
+    ReadFlow: Fn(&mut Ctx, &mut Ret) -> Flow,
+{
     // Should there be guards that do stuff at compile-time? Can't think of anything that
     // couldn't be better done by editing the knight.
     let mut start = HashMap::<Ty, Range<usize>>::new();
@@ -659,7 +668,7 @@ pub fn compile<Ctx, Ret, ReadFlow>(knight: Knight<Ctx, Ret>, armory: &Armory, re
             }};
         }
         #[cfg(debug_assertions)]
-        w!(ops::NOP, "-------- {} --------", ty.name);
+        w!(ops::NOP, "-------- {} --------", ty);
 
         macro_rules! visit {
             ($phase:path, $body_ty:path, $specialize:expr, ops::$op:ident, visit_data.$visit_body_field:ident += $visit_data:expr) => {{
@@ -734,10 +743,14 @@ pub fn compile<Ctx, Ret, ReadFlow>(knight: Knight<Ctx, Ret>, armory: &Armory, re
                         let pc: Op = ops.len().try_into().expect("op index too large");
                         let jt = jump_table_start + i;
                         ops[jt] = pc;
-                        dis[jt] = format!(" {:3}. {}:{} {:3} = | | {} (relocation)", jt, file!(), line!(), pc, variant.name);
+                        dis[jt] = format!(" {:3}. {}:{} {:3} = | | {} [relocation]", jt, file!(), line!(), pc, variant.name);
                         visit!(phase::Enter, rt::Variant, ty, ops::VISIT_VARIANT, visit_data.variant += variant);
                         for field in variant.fields.iter() {
                             visit!(phase::Enter, rt::Field, ty, ops::VISIT_FIELD, visit_data.field += field);
+                            {
+                                w!(ops::ENTER);
+                                w!(@field.ty);
+                            }
                             visit!(phase::Leave, rt::Field, ty, ops::VISIT_FIELD, visit_data.field += field);
                         }
                         visit!(phase::Leave, rt::Variant, ty, ops::VISIT_VARIANT, visit_data.variant += variant);
@@ -863,6 +876,15 @@ pub enum Flow {
     Break,
     /// End execution immediately.
     Quit,
+}
+impl Flow {
+    pub fn continues<Ctx, Ret>(_ctx: &mut Ctx, _ret: &mut Ret) -> Flow { Flow::Continue }
+    pub fn result<Ctx, T, E>(_ctx: &mut Ctx, ret: &mut Result<T, E>) -> Flow {
+        match ret {
+            Ok(_) => Flow::Continue,
+            Err(_) => Flow::Quit,
+        }
+    }
 }
 
 

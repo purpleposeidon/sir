@@ -5,19 +5,6 @@ use crate::Blade;
 use crate::rt::*;
 use crate::util::{AnyDebug, Ty};
 
-
-// Sir Jen - Debugger/Inspector
-// Sir Mise - Printer
-// Sir Vei - Printer
-// Sir Loin
-// Sir George - Surcharge? idk man
-// Sir Plant
-// Sir Ial - Serializer
-// Sir Vive - Serializer. Or "interact w/ objects defined only dynamically"
-// Sir Eel - Serializer
-// Sir George (Or was it Michael?) - Slayer of dragons, hence compilers, hence does JIT. But maybe it
-// should just be Saint George.
-
 #[doc(hidden)]
 pub fn a2r<R: AnyDebug>(a: &dyn AnyDebug) -> &R {
     if let Some(a) = a.downcast_ref() {
@@ -37,6 +24,7 @@ pub fn a2m<R: AnyDebug>(a: &mut dyn AnyDebug) -> &mut R {
 #[derive(Clone)]
 pub struct Kingdom {
     pub swords: Arc<HashMap<Ty, Sword>>,
+    // TODO: Constraints and stuff from commit:4fb70c9/Castle
 }
 pub struct KingdomBuilder {
     swords: HashMap<Ty, Sword>,

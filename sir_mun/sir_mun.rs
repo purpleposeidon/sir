@@ -525,8 +525,7 @@ impl<'a, 'lua, 'dst> BodyVisitor for MunVisitor<'a, 'lua, 'dst> {
     }
 }
 
-
-
+#[test]
 fn main() {
     let mut kingdom = Kingdom::builder();
     kingdom.add::<Option<i32>>();

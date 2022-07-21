@@ -200,6 +200,7 @@ impl<'a, W: fmt::Write> BodyVisitor for MarkVisitor<'a, W> {
     }
 }
 
+#[test]
 fn main() {
     let mut kingdom = Kingdom::builder();
     kingdom.add::<Option<i32>>();

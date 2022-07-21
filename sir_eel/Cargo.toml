@@ -1,0 +1,12 @@
+[package]
+name = "sir_eel"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+path = "./sir_eel.rs"
+
+[dependencies]
+sir = { path = "../sir/" }
+bincode = { git = "https://github.com/bincode-org/bincode", default-features = false, features = ["std", "alloc"] }
+eztrace = "*"

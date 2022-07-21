@@ -12,13 +12,11 @@ use syn::spanned::Spanned;
 use quote::{quote, ToTokens};
 
 // Foo
-#[derive(Debug)]
 struct Guard {
     event: Expr,
     // Foo => || Bar
     //handle: Option<Expr>,
 }
-#[derive(Debug)]
 struct Guards {
     _where: Token![where],
     _brace: token::Brace,

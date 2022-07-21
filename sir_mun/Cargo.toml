@@ -1,0 +1,11 @@
+[package]
+name = "sir_mun"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+path = "./sir_mun.rs"
+
+[dependencies]
+sir = { path = "../sir/" }
+rlua = "0.9.*"

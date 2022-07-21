@@ -258,6 +258,7 @@ impl<'a> BodyVisitor for VeyVisitor<'a> {
     }
 }
 
+#[test]
 fn main() {
     let mut kingdom = Kingdom::builder();
     kingdom.add::<Option<i8>>();

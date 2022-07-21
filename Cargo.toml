@@ -1,19 +1,11 @@
-[package]
-name = "sir"
-version = "0.1.0"
-edition = "2018"
+[workspace]
+members = ["sir_macro", "sir", "sir_mark", "sir_mun", "sir_vey", "sir_eel"]
 
-[lib]
-name = "sir"
-path = "./sir.rs"
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[dependencies]
-sir_macro = { path = "./sir_macro", version = "0.1.0" }
-mopa = "0.2"
-eztrace = "*"
 
-# field-offset = "0.3"
-
-# TODO: These impls should get their own crates.
-rlua = "0.9.*"
-bincode = { git = "https://github.com/bincode-org/bincode", default-features = false, features = ["std", "alloc"] }
+#[dependencies]
+## TODO: These impls should get their own crates.
+#[dev-dependencies]
+#rlua = "0.9.*"
+#bincode = { git = "https://github.com/bincode-org/bincode", default-features = false, features = ["std", "alloc"] }

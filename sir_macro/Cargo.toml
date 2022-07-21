@@ -4,16 +4,15 @@ version = "0.1.0"
 authors = ["neptunepink <purpleposeidon@gmail.com>"]
 edition = "2018"
 license = "MIT/Apache-2.0"
-#repository = "https://github.com/purpleposeidon/v9"
 description = "Implementation of procedural macro `sir::blade!`."
 
 [lib]
 proc-macro = true
-path = "../macro.rs"
+path = "./macro.rs"
 
 [dependencies]
-syn = { version = "1.0", features = ["extra-traits", "full"] }
-#syn = { version = "1.0", features = ["full"] }
-quote = "1.0"
-eztrace = "*"
+#syn = { version = "1.0", features = ["full", "extra-traits"] } # -- Debug trait
+syn = { version = "1", features = ["full"] }
+quote = "1"
+#eztrace = "*"
 proc-macro2 = "*"

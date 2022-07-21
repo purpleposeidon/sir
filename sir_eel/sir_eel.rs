@@ -424,6 +424,7 @@ impl<W: io::Write> EncoderBuilder<W> {
     }
 }
 
+#[test]
 fn main() {
     let mut kingdom = Kingdom::empty();
     kingdom.add::<bool>();
@@ -465,6 +466,7 @@ fn main() {
 
     println!();
 
+    use std::io::Cursor;
     type R<'a> = Cursor<&'a [u8]>;
     let mut builder = DecoderBuilder::<R>::new(kingdom.clone());
     builder.add_prims();
@@ -485,7 +487,6 @@ fn main() {
     }
 }
 
-use std::io::Cursor;
 pub type DeelResult = Result<(), DecodeError>;
 impl<R: io::Read> Key for Ctx<R, CR> {
     type Ctx = Self;

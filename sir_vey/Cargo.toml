@@ -1,0 +1,10 @@
+[package]
+name = "sir_vey"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+path = "./sir_vey.rs"
+
+[dependencies]
+sir = { path = "../sir/" }

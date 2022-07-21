@@ -1,0 +1,14 @@
+[package]
+name = "sir"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+path = "./sir.rs"
+
+[dependencies]
+sir_macro = { path = "../sir_macro", version = "0.1.0" }
+mopa = "0.2"
+#eztrace = "*"
+
+#field-offset = "0.3"

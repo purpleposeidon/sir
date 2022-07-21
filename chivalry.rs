@@ -1,6 +1,4 @@
-//! Marker types forming a common (dynamic) vocabulary for guards.
-//! A well-rounded knight should use these vocabulary items.
-// FIXME: This should be per-crate for now.
+//! Common vocabulary types for guards.
 
 use crate::{Name, rt};
 use std::any::Any;
@@ -12,6 +10,7 @@ pub trait ValidAt<P: SyntaxPosition> {}
 pub trait SyntaxPosition {}
 impl SyntaxPosition for crate::rt::Item {}
 impl SyntaxPosition for crate::rt::Field {}
+impl SyntaxPosition for crate::rt::Variant {}
 
 /// Provide a missing value.
 /// The function's parameter is `&mut Option<T>`; it should set it to `Some(T::default())`.
@@ -112,3 +111,7 @@ impl Default for EnumTag {
     fn default() -> Self { Self::External }
 }
 impl ValidAt<rt::Item> for EnumTag {}
+
+#[derive(Debug)]
+pub struct VariantDiscrim<T>(pub T);
+impl<T: fmt::Debug> ValidAt<crate::rt::Variant> for VariantDiscrim<T> {}

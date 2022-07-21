@@ -64,7 +64,7 @@ pub struct Variant {
     pub body_type: BodyType,
     pub fields: Vec<Arc<Field>>,
     pub init: fn(AnyOptionT, &mut dyn FnMut(AnyOptionT)),
-    // FIXME: enum::Variant discrim. Option<usize>? Hmm.
+    pub guards: Vec<Guard>,
 }
 #[derive(Clone)]
 pub struct Field {

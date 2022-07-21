@@ -8,16 +8,16 @@ use std::sync::Arc;
 impl<T: Blade> Blade for Option<T> {
     blade! {
         enum Option::<T> where {},
-        Option::<T>::None,
-        Option::<T>::Some(T),
+        None,
+        Some(T),
     }
 }
 
 impl<T: Blade, E: Blade> Blade for Result<T, E> {
     blade! {
         enum Result::<T, E> where {},
-        Result::<T, E>::Ok(T),
-        Result::<T, E>::Err(E),
+        Ok(T),
+        Err(E),
     }
 }
 

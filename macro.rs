@@ -2,7 +2,6 @@ extern crate proc_macro;
 extern crate syn;
 extern crate quote;
 extern crate proc_macro2;
-#[allow(unused_imports)] #[macro_use] extern crate eztrace;
 
 //use proc_macro::TokenStream;
 use proc_macro2::TokenStream;
@@ -48,7 +47,7 @@ struct Inner {
 struct Variant {
     unit: Path,
     inner: Option<Inner>,
-    //guards: Option<Guards>,
+    guards: Option<Guards>,
 }
 enum Blade {
     Enum {
@@ -80,6 +79,7 @@ pub fn blade_impl(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
         Blade::Enum { variants, ..  } => {
             let mut discrim_out = quote![];
             for (discrim_id, variant) in variants.iter().enumerate() {
+                let guards = collect_guards(variant.guards.as_ref(), &quote![rt::Variant]);
                 let unit = &variant.unit;
                 let unit_str = &unit.segments.last().unwrap().ident;
                 let unit_str = format!("{}", unit_str);
@@ -91,9 +91,9 @@ pub fn blade_impl(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
                         body_type = quote![Unit];
                         discrim_out = quote! {
                             #discrim_out
-                            #unit => #discrim_id,
+                            #this :: #unit => #discrim_id,
                         };
-                        variant_init = quote! { #unit };
+                        variant_init = quote! { #this :: #unit };
                     },
                     Some(inner) => {
                         let Inner { fields, .. } = inner;
@@ -102,10 +102,10 @@ pub fn blade_impl(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
                             let field_ty = fields.iter().map(|f| &f.ty).collect::<Vec<_>>();
                             discrim_out = quote! {
                                 #discrim_out
-                                #unit(..) => #discrim_id,
+                                #this :: #unit(..) => #discrim_id,
                             };
                             variant_init = quote! {
-                                #unit(#({
+                                #this :: #unit(#({
                                     let mut f = Option::<#field_ty>::None;
                                     _each(&mut f);
                                     if let Some(f) = f { f } else { return }
@@ -130,14 +130,14 @@ pub fn blade_impl(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
                                         name: #field_name,
                                         ty: Ty::of::<#ty>(),
                                         as_ref: |s: &dyn AnyDebug| -> &dyn AnyDebug {
-                                            if let #unit(#pick) = Self::downcast_ref(s) {
+                                            if let #this :: #unit(#pick) = Self::downcast_ref(s) {
                                                 pick
                                             } else {
                                                 variant_mismatch()
                                             }
                                         },
                                         as_mut: |s: &mut dyn AnyDebug| -> &mut dyn AnyDebug {
-                                            if let #unit(#pick) = Self::downcast_mut(s) {
+                                            if let #this :: #unit(#pick) = Self::downcast_mut(s) {
                                                 pick
                                             } else {
                                                 variant_mismatch()
@@ -152,13 +152,13 @@ pub fn blade_impl(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
                             body_type = quote![Struct];
                             discrim_out = quote! {
                                 #discrim_out
-                                #unit { .. } => #discrim_id,
+                                #this :: #unit { .. } => #discrim_id,
                             };
                             {
                                 let field = fields.iter().map(|field| &field.name.as_ref().unwrap().name);
                                 let field_ty = fields.iter().map(|field| field.ty.to_token_stream());
                                 variant_init = quote! {
-                                    #unit {
+                                    #this :: #unit {
                                         #(#field: {
                                             let mut f = Option::<#field_ty>::None;
                                             _each(&mut f);
@@ -178,14 +178,14 @@ pub fn blade_impl(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
                                         name: #field_name,
                                         ty: Ty::of::<#ty>(),
                                         as_ref: |s: &dyn AnyDebug| -> &dyn AnyDebug {
-                                            if let #unit { #pick, .. } = Self::downcast_ref(s) {
+                                            if let #this :: #unit { #pick, .. } = Self::downcast_ref(s) {
                                                 #pick
                                             } else {
                                                 variant_mismatch()
                                             }
                                         },
                                         as_mut: |s: &mut dyn AnyDebug| -> &mut dyn AnyDebug {
-                                            if let #unit { #pick, .. } = Self::downcast_mut(s) {
+                                            if let #this :: #unit { #pick, .. } = Self::downcast_mut(s) {
                                                 #pick
                                             } else {
                                                 variant_mismatch()
@@ -211,6 +211,7 @@ pub fn blade_impl(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
                             let out: &mut Option<Self> = out.downcast_mut().expect("wrong type (enum)");
                             *out = Some(#variant_init);
                         },
+                        guards: #guards,
                     }),
                 };
             }
@@ -466,12 +467,12 @@ impl Parse for Variant {
         } else {
             None
         };
-        /*let guards = if input.peek(Token![where]) {
+        let guards = if input.peek(Token![where]) {
             Some(input.parse()?)
         } else {
             None
-        };*/
-        Ok(Variant { unit, inner })
+        };
+        Ok(Variant { unit, inner, guards })
     }
 }
 

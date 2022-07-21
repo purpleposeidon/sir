@@ -1,6 +1,5 @@
 extern crate sir;
 
-use sir::{blade, Blade};
 use sir::rt::*;
 use sir::knights::{Kingdom, BodyVisitor, Visit, a2r};
 use sir::util::AnyDebug;
@@ -260,6 +259,7 @@ impl<'a> BodyVisitor for VeyVisitor<'a> {
 
 #[test]
 fn main() {
+    use sir::{blade, Blade};
     let mut kingdom = Kingdom::builder();
     kingdom.add::<Option<i8>>();
     kingdom.add::<i8>();
@@ -292,31 +292,31 @@ fn main() {
 
         println!();
     }
-}
 
-#[derive(Debug)]
-enum Knight {
-    Mind(MindLevel),
-    Nobody,
-}
-impl Blade for Knight {
-    blade! {
-        enum Knight where {},
+    #[derive(Debug)]
+    enum Knight {
         Mind(MindLevel),
         Nobody,
     }
-}
-#[derive(Debug)]
-struct MindLevel {
-    name: String,
-    anger: Option<i8>,
-    foo: Result<i8, bool>,
-}
-impl Blade for MindLevel {
-    blade! {
-        struct MindLevel where {},
+    impl Blade for Knight {
+        blade! {
+            enum Knight where {},
+            Mind(MindLevel),
+            Nobody,
+        }
+    }
+    #[derive(Debug)]
+    struct MindLevel {
         name: String,
         anger: Option<i8>,
         foo: Result<i8, bool>,
+    }
+    impl Blade for MindLevel {
+        blade! {
+            struct MindLevel where {},
+            name: String,
+            anger: Option<i8>,
+            foo: Result<i8, bool>,
+        }
     }
 }

@@ -424,69 +424,6 @@ impl<W: io::Write> EncoderBuilder<W> {
     }
 }
 
-#[test]
-fn main() {
-    let mut kingdom = Kingdom::empty();
-    kingdom.add::<bool>();
-    kingdom.add::<i32>();
-    kingdom.add::<u8>();
-    kingdom.add::<Result<i32, bool>>();
-    kingdom.add::<Vec<i32>>();
-    kingdom.add::<Result<bool, i32>>();
-    kingdom.add::<HashMap<u8, bool>>();
-    kingdom.add::<AT>();
-    let kingdom = &kingdom.build();
-
-    type W = Vec<u8>;
-    let mut builder = EncoderBuilder::<W>::new(kingdom.clone());
-    builder.add_prims();
-    let cc = builder.compile(|_, _| false);
-
-    let fd = {
-        let val = AT {
-            x: true,
-            data: vec![1, 2, 3, 8, 9],
-            foo: Ok(false),
-            map: vec![(4, true), (3, false)].drain(..).collect(),
-        };
-        trace!(val);
-        let mut ctx = Ctx {
-            _c: CW,
-            fd: Vec::<u8>::new(),
-            val: &val,
-            out: &mut (),
-        };
-        let ty = AnyDebug::get_ty(&val);
-        let handle = *cc.known.get(&ty).unwrap_or_else(|| panic!("Handling for {} was not compiled", ty));
-        let ret = cc.arena.run(handle, &mut ctx);
-        trace!(ret);
-        trace!(ctx.fd);
-        ctx.fd
-    };
-
-    println!();
-
-    use std::io::Cursor;
-    type R<'a> = Cursor<&'a [u8]>;
-    let mut builder = DecoderBuilder::<R>::new(kingdom.clone());
-    builder.add_prims();
-    let cc = builder.compile(|_, _| false);
-    {
-        let mut out = Option::<AT>::None;
-        let mut ctx = Ctx {
-            _c: CR,
-            fd: Cursor::new(&fd[..]),
-            val: &(),
-            out: &mut out,
-        };
-        let ty = Ty::of::<AT>();
-        let handle = *cc.known.get(&ty).unwrap_or_else(|| panic!("Handling for {} was not compiled", ty));
-        let ret = cc.arena.run(handle, &mut ctx);
-        trace!(ret);
-        trace!(out);
-    }
-}
-
 pub type DeelResult = Result<(), DecodeError>;
 impl<R: io::Read> Key for Ctx<R, CR> {
     type Ctx = Self;
@@ -611,19 +548,82 @@ impl<R: io::Read> DecoderBuilder<R> {
     }
 }
 
-#[derive(Debug)]
-struct AT {
-    foo: Result<bool, i32>,
-    x: bool,
-    data: Vec<i32>,
-    map: HashMap<u8, bool>,
-}
-impl sir::Blade for AT {
-    sir::blade! {
-        struct AT where {},
+#[test]
+fn main() {
+    let mut kingdom = Kingdom::empty();
+    kingdom.add::<bool>();
+    kingdom.add::<i32>();
+    kingdom.add::<u8>();
+    kingdom.add::<Result<i32, bool>>();
+    kingdom.add::<Vec<i32>>();
+    kingdom.add::<Result<bool, i32>>();
+    kingdom.add::<HashMap<u8, bool>>();
+    kingdom.add::<AT>();
+    let kingdom = &kingdom.build();
+
+    type W = Vec<u8>;
+    let mut builder = EncoderBuilder::<W>::new(kingdom.clone());
+    builder.add_prims();
+    let cc = builder.compile(|_, _| false);
+
+    let fd = {
+        let val = AT {
+            x: true,
+            data: vec![1, 2, 3, 8, 9],
+            foo: Ok(false),
+            map: vec![(4, true), (3, false)].drain(..).collect(),
+        };
+        trace!(val);
+        let mut ctx = Ctx {
+            _c: CW,
+            fd: Vec::<u8>::new(),
+            val: &val,
+            out: &mut (),
+        };
+        let ty = AnyDebug::get_ty(&val);
+        let handle = *cc.known.get(&ty).unwrap_or_else(|| panic!("Handling for {} was not compiled", ty));
+        let ret = cc.arena.run(handle, &mut ctx);
+        trace!(ret);
+        trace!(ctx.fd);
+        ctx.fd
+    };
+
+    println!();
+
+    use std::io::Cursor;
+    type R<'a> = Cursor<&'a [u8]>;
+    let mut builder = DecoderBuilder::<R>::new(kingdom.clone());
+    builder.add_prims();
+    let cc = builder.compile(|_, _| false);
+    {
+        let mut out = Option::<AT>::None;
+        let mut ctx = Ctx {
+            _c: CR,
+            fd: Cursor::new(&fd[..]),
+            val: &(),
+            out: &mut out,
+        };
+        let ty = Ty::of::<AT>();
+        let handle = *cc.known.get(&ty).unwrap_or_else(|| panic!("Handling for {} was not compiled", ty));
+        let ret = cc.arena.run(handle, &mut ctx);
+        trace!(ret);
+        trace!(out);
+    }
+
+    #[derive(Debug)]
+    struct AT {
         foo: Result<bool, i32>,
         x: bool,
         data: Vec<i32>,
         map: HashMap<u8, bool>,
+    }
+    impl sir::Blade for AT {
+        sir::blade! {
+            struct AT where {},
+            foo: Result<bool, i32>,
+            x: bool,
+            data: Vec<i32>,
+            map: HashMap<u8, bool>,
+        }
     }
 }

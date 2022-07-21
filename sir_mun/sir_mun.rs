@@ -1,12 +1,12 @@
 extern crate sir;
 extern crate rlua;
 
-use sir::{blade, Blade};
 use sir::rt::*;
 use sir::chivalry::*;
 use sir::knights::{Kingdom, BodyVisitor, Visit};
 use sir::util::AnyDebug;
 use std::any::type_name;
+use std::collections::HashMap;
 
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -527,6 +527,7 @@ impl<'a, 'lua, 'dst> BodyVisitor for MunVisitor<'a, 'lua, 'dst> {
 
 #[test]
 fn main() {
+    use sir::{blade, Blade};
     let mut kingdom = Kingdom::builder();
     kingdom.add::<Option<i32>>();
     kingdom.add::<HashMap<i32, bool>>();
@@ -554,36 +555,33 @@ fn main() {
         let r = mun.create::<Example>(&lua, r).expect("mun fail");
         println!("sir_mun = {:#?}", r);
     }
-}
 
-
-use std::collections::HashMap;
-
-#[derive(Default, Debug)]
-struct Example {
-    foo: i8,
-    bar: u64,
-    nested: Nested,
-    map: HashMap<i32, bool>,
-    answer: Option<i32>,
-}
-impl Blade for Example {
-    blade! {
-        struct Example where {},
+    #[derive(Default, Debug)]
+    struct Example {
         foo: i8,
         bar: u64,
         nested: Nested,
         map: HashMap<i32, bool>,
         answer: Option<i32>,
     }
-}
-#[derive(Default, Debug)]
-struct Nested {
-    cheese: String,
-}
-impl Blade for Nested {
-    blade! {
-        struct Nested where {},
+    impl Blade for Example {
+        blade! {
+            struct Example where {},
+            foo: i8,
+            bar: u64,
+            nested: Nested,
+            map: HashMap<i32, bool>,
+            answer: Option<i32>,
+        }
+    }
+    #[derive(Default, Debug)]
+    struct Nested {
         cheese: String,
+    }
+    impl Blade for Nested {
+        blade! {
+            struct Nested where {},
+            cheese: String,
+        }
     }
 }

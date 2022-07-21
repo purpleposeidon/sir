@@ -1,6 +1,5 @@
 extern crate sir;
 
-use sir::{blade, Blade};
 use sir::rt::*;
 use sir::chivalry::*;
 use sir::knights::{Kingdom, BodyVisitor, Visit};
@@ -202,6 +201,7 @@ impl<'a, W: fmt::Write> BodyVisitor for MarkVisitor<'a, W> {
 
 #[test]
 fn main() {
+    use sir::{blade, Blade};
     let mut kingdom = Kingdom::builder();
     kingdom.add::<Option<i32>>();
     kingdom.add::<HashMap<i32, bool>>();
@@ -237,35 +237,35 @@ fn main() {
     let example = Vec::<i32>::new();
     mark.value(&mut out, "out", &example).unwrap();
     println!("{}", out);
-}
 
-use std::collections::HashMap;
+    use std::collections::HashMap;
 
-#[derive(Default, Debug)]
-struct Example {
-    foo: i8,
-    bar: u64,
-    nested: Nested,
-    map: HashMap<i32, bool>,
-    answer: Option<i32>,
-}
-impl Blade for Example {
-    blade! {
-        struct Example where {},
+    #[derive(Default, Debug)]
+    struct Example {
         foo: i8,
         bar: u64,
         nested: Nested,
         map: HashMap<i32, bool>,
         answer: Option<i32>,
     }
-}
-#[derive(Default, Debug)]
-struct Nested {
-    cheese: String,
-}
-impl Blade for Nested {
-    blade! {
-        struct Nested where {},
+    impl Blade for Example {
+        blade! {
+            struct Example where {},
+            foo: i8,
+            bar: u64,
+            nested: Nested,
+            map: HashMap<i32, bool>,
+            answer: Option<i32>,
+        }
+    }
+    #[derive(Default, Debug)]
+    struct Nested {
         cheese: String,
+    }
+    impl Blade for Nested {
+        blade! {
+            struct Nested where {},
+            cheese: String,
+        }
     }
 }

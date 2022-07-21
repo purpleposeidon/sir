@@ -4,6 +4,7 @@ use std::hash;
 use crate::Name;
 use std::alloc::Layout;
 
+/// Like `std::any::TypeId`, but better.
 #[derive(Copy, Clone, Eq)]
 pub struct Ty {
     pub id: NonStaticTypeId,
@@ -30,6 +31,7 @@ impl Ty {
     }
 }
 
+/// Like `std::any::Any`, but with 'fmt::Debug', 'Send', & 'Sync'.
 pub trait AnyDebug: mopa::Any + fmt::Debug + Send + Sync {
     fn type_name<'a>(&'a self) -> &'static str {
         type_name::<Self>()
@@ -43,6 +45,7 @@ impl<X: mopa::Any + fmt::Debug + Send + Sync> AnyDebug for X {
     }
 }
 
+/// Like `std::any::TypeId`, but doesn't require `'static`.
 #[derive(PartialEq, Eq, Hash, Copy, Clone)]
 pub struct NonStaticTypeId(usize);
 impl NonStaticTypeId {

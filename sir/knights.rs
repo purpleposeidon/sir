@@ -1,9 +1,10 @@
-use crate::rt::*;
-use std::collections::{HashMap, HashSet};
-use crate::util::AnyDebug;
-use crate::Blade;
-use std::sync::Arc;
 use std::any::type_name;
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
+use crate::{Blade, Name};
+use crate::rt::*;
+use crate::util::{AnyDebug, Ty};
+
 
 // Sir Jen - Debugger/Inspector
 // Sir Mise - Printer
@@ -37,23 +38,23 @@ pub fn a2m<R: AnyDebug>(a: &mut dyn AnyDebug) -> &mut R {
 pub struct Kingdom {
     pub swords: Arc<HashMap<Ty, Sword>>,
 }
-pub struct BuildKingdom {
+pub struct KingdomBuilder {
     swords: HashMap<Ty, Sword>,
 }
-impl Default for BuildKingdom {
+impl Default for KingdomBuilder {
     fn default() -> Self { Self::new() }
 }
 impl Kingdom {
-    pub fn builder() -> BuildKingdom {
-        BuildKingdom::default()
+    pub fn builder() -> KingdomBuilder {
+        KingdomBuilder::default()
     }
-    pub fn empty() -> BuildKingdom {
-        BuildKingdom {
+    pub fn empty() -> KingdomBuilder {
+        KingdomBuilder {
             swords: Default::default(),
         }
     }
 }
-impl BuildKingdom {
+impl KingdomBuilder {
     pub fn new() -> Self {
         Self {
             swords: crate::impls::register_primals(),
@@ -194,4 +195,47 @@ pub trait BodyVisitor {
     fn visit_enum(&mut self, visit: Visit<BodyEnum>) -> Result<(), Self::Err>;
     fn visit_vec(&mut self, visit: Visit<BodyVec>) -> Result<(), Self::Err>;
     fn visit_map(&mut self, visit: Visit<BodyMap>) -> Result<(), Self::Err>;
+}
+
+/// A collection of [`Sword`s](./rt/struct.Sword.html).
+pub struct Castle {
+    reg: HashMap<Ty, Sword>,
+    name2ty: HashMap<Name, Ty>,
+    constraints: Vec<Box<dyn FnMut(&mut HashMap<Ty, Sword>, &HashMap<Name, Ty>) + 'static + Send + Sync>>,
+    frozen: bool,
+}
+impl Castle {
+    pub fn reg(&self) -> &HashMap<Ty, Sword> {
+        &self.reg
+    }
+    pub fn add<B: Blade>(&mut self) {
+        self.add_orphan(
+            Ty::of::<B>(),
+            Sword::of::<B>(),
+        );
+    }
+    pub fn add_orphan(&mut self, ty: Ty, sword: Sword) {
+        self.assert_thawed();
+        self.name2ty.insert(ty.name, ty);
+        self.reg.insert(ty, sword);
+    }
+    pub fn constrain(
+        &mut self,
+        f: impl FnMut(
+            &mut HashMap<Ty, Sword>,
+            &HashMap<Name, Ty>,
+        ) + 'static + Send + Sync,
+    ) {
+        self.constraints.push(Box::new(f));
+    }
+    pub fn freeze(&mut self) {
+        self.assert_thawed();
+        self.frozen = true;
+        for c in std::mem::take(&mut self.constraints).iter_mut() {
+            c(&mut self.reg, &self.name2ty);
+        }
+    }
+    fn assert_thawed(&self) {
+        if self.frozen { panic!("registry frozen"); }
+    }
 }

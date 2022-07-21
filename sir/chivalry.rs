@@ -112,6 +112,7 @@ impl Default for EnumTag {
 }
 impl ValidAt<rt::Item> for EnumTag {}
 
-#[derive(Debug)]
-pub struct VariantDiscrim<T>(pub T);
-impl<T: fmt::Debug> ValidAt<crate::rt::Variant> for VariantDiscrim<T> {}
+// It'd need to be VariantDiscrim(Box<dyn Any>).
+//#[derive(Debug)]
+//pub struct VariantDiscrim<T>(pub T);
+//impl<T: fmt::Debug> ValidAt<crate::rt::Variant> for VariantDiscrim<T> {}

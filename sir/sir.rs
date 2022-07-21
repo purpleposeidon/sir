@@ -28,15 +28,11 @@ macro_rules! blade {
 #[doc(hidden)]
 pub use crate as sir;
 
-pub mod knights;
-pub mod castle;
 pub mod util;
 pub mod rt;
 mod spam;
 mod impls;
-
-/// Puns. Deal with it 😎
-pub use self::castle::*;
+pub mod knights;
 
 pub type Name = &'static str;
 

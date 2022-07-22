@@ -30,4 +30,10 @@ There are these advantages over serde:
     2. Compiling to an efficient closure-VM at runtime for things that need to be faster.
     3. Using a traditional derive (eg of serde (or manual implementation)) for larger & more complicated types requiring bulk storage, like `Vec<Triangle>`.
 
+Our equivalents of eg `serde_json` are called Knights. The brave knights of this repository are:
+1. Sir Vey. Debug printing.
+2. Sir Mun. Deserializes rlua objects.
+3. Sir Mark. Serializes to lua source code.
+4. Sir Eel. Serializes and Deserializes using `crate:bincode`.
+
 (`crates:sir` is already taken; this will have to be renamed if it ever ends up there.)

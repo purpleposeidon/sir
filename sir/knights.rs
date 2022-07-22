@@ -1,3 +1,5 @@
+//! Tools for knights.
+
 use std::any::type_name;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;

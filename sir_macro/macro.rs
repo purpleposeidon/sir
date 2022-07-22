@@ -63,6 +63,13 @@ enum Blade {
         fields: Punctuated<Field, Token![,]>,
     }
 }
+impl Blade {
+    fn name(&self) -> &Ident {
+        match self {
+            Blade::Enum { name, .. } | Blade::Struct { name, .. } => &name.segments.last().expect("no name!?").ident,
+        }
+    }
+}
 
 
 #[proc_macro]
@@ -77,7 +84,7 @@ pub fn blade_impl(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
         Blade::Enum { variants, ..  } => {
             let mut discrim_out = quote![];
             for (discrim_id, variant) in variants.iter().enumerate() {
-                let guards = collect_guards(variant.guards.as_ref(), &quote![rt::Variant]);
+                let guards = collect_guards(variant.guards.as_ref(), &quote![sir::rt::Variant]);
                 let unit = &variant.unit;
                 let unit_str = &unit.segments.last().unwrap().ident;
                 let unit_str = format!("{}", unit_str);
@@ -110,7 +117,7 @@ pub fn blade_impl(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
                                 }),*)
                             };
                             for (i, field) in fields.iter().enumerate() {
-                                let guards = collect_guards(field.guards.as_ref(), &quote![rt::Field]);
+                                let guards = collect_guards(field.guards.as_ref(), &quote![sir::rt::Field]);
                                 let pick = (0..fields.len())
                                     .map(|j| {
                                         if i == j {
@@ -128,20 +135,20 @@ pub fn blade_impl(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
                                         name: #field_name,
                                         ty: Ty::of::<#ty>(),
                                         as_ref: |s: &dyn AnyDebug| -> &dyn AnyDebug {
-                                            if let #this :: #unit(#pick) = Self::downcast_ref(s) {
+                                            if let Some(#this :: #unit(#pick)) = <dyn AnyDebug>::downcast_ref::<#this>(s) {
                                                 pick
                                             } else {
                                                 variant_mismatch()
                                             }
                                         },
                                         as_mut: |s: &mut dyn AnyDebug| -> &mut dyn AnyDebug {
-                                            if let #this :: #unit(#pick) = Self::downcast_mut(s) {
+                                            if let Some(#this :: #unit(#pick)) = <dyn AnyDebug>::downcast_mut::<#this>(s) {
                                                 pick
                                             } else {
                                                 variant_mismatch()
                                             }
                                         },
-                                        with: |f: &mut dyn FnMut(AnyOptionT)| f(&mut Option::<Self>::None),
+                                        with: |f: &mut dyn FnMut(AnyOptionT)| f(&mut Option::<#this>::None),
                                         guards: #guards,
                                     }),
                                 };
@@ -166,7 +173,7 @@ pub fn blade_impl(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
                                 };
                             }
                             for field in fields {
-                                let guards = collect_guards(field.guards.as_ref(), &quote![rt::Field]);
+                                let guards = collect_guards(field.guards.as_ref(), &quote![sir::rt::Field]);
                                 let pick = &field.name.as_ref().unwrap().name;
                                 let field_name = format!("{}", pick);
                                 let ty = field.ty.to_token_stream();
@@ -176,20 +183,20 @@ pub fn blade_impl(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
                                         name: #field_name,
                                         ty: Ty::of::<#ty>(),
                                         as_ref: |s: &dyn AnyDebug| -> &dyn AnyDebug {
-                                            if let #this :: #unit { #pick, .. } = Self::downcast_ref(s) {
+                                            if let Some(#this :: #unit { #pick, .. }) = <dyn AnyDebug>::downcast_ref::<#this>(s) {
                                                 #pick
                                             } else {
                                                 variant_mismatch()
                                             }
                                         },
                                         as_mut: |s: &mut dyn AnyDebug| -> &mut dyn AnyDebug {
-                                            if let #this :: #unit { #pick, .. } = Self::downcast_mut(s) {
+                                            if let Some(#this :: #unit { #pick, .. }) = <dyn AnyDebug>::downcast_mut::<#this>(s) {
                                                 #pick
                                             } else {
                                                 variant_mismatch()
                                             }
                                         },
-                                        with: |f: &mut dyn FnMut(AnyOptionT)| f(&mut Option::<Self>::None),
+                                        with: |f: &mut dyn FnMut(AnyOptionT)| f(&mut Option::<#this>::None),
                                         guards: #guards,
                                     }),
                                 };
@@ -206,7 +213,7 @@ pub fn blade_impl(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
                         body_type: BodyType::#body_type,
                         fields: vec![#fields_out],
                         init: |out: AnyOptionT, _each: &mut dyn FnMut(AnyOptionT)| {
-                            let out: &mut Option<Self> = out.downcast_mut().expect("wrong type (enum)");
+                            let out: &mut Option<#this> = out.downcast_mut().expect("wrong type (enum)");
                             *out = Some(#variant_init);
                         },
                         guards: #guards,
@@ -217,7 +224,7 @@ pub fn blade_impl(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 Body::Enum(Arc::new(BodyEnum {
                     variants: vec![#variants_out],
                     variant_index: |s: &dyn AnyDebug| -> usize {
-                        match Self::downcast_ref(s) {
+                        match <dyn AnyDebug>::downcast_ref::<#this>(s).expect("wrong type") {
                             #discrim_out
                         }
                     },
@@ -256,7 +263,7 @@ pub fn blade_impl(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
                         span: field.ty.span(),
                     }), quote! { #str_i })
                 };
-                let guards = collect_guards(field.guards.as_ref(), &quote![rt::Struct]);
+                let guards = collect_guards(field.guards.as_ref(), &quote![sir::rt::Struct]);
                 let ty = field.ty.to_token_stream();
                 body = quote! {
                     #body
@@ -264,12 +271,12 @@ pub fn blade_impl(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
                         name: #str_name,
                         ty: Ty::of::<#ty>(),
                         as_ref: |s: &dyn AnyDebug| -> &dyn AnyDebug {
-                            &Self::downcast_ref(s).#field_name
+                            &<dyn AnyDebug>::downcast_ref::<#this>(s).expect("wrong type").#field_name
                         },
                         as_mut: |s: &mut dyn AnyDebug| -> &mut dyn AnyDebug {
-                            &mut Self::downcast_mut(s).#field_name
+                            &mut <dyn AnyDebug>::downcast_mut::<#this>(s).expect("wrong type").#field_name
                         },
-                        with: |f: &mut dyn FnMut(AnyOptionT)| f(&mut Option::<Self>::None),
+                        with: |f: &mut dyn FnMut(AnyOptionT)| f(&mut Option::<#this>::None),
                         guards: #guards,
                     }),
                 };
@@ -286,8 +293,8 @@ pub fn blade_impl(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
                     body_type: BodyType::#body_type,
                     fields: vec![#body],
                     init: |out: AnyOptionT, each: &mut dyn FnMut(AnyOptionT)| {
-                        let out: &mut Option<Self> = out.downcast_mut().unwrap();
-                        let this = Self {#(
+                        let out: &mut Option<#this> = <dyn AnyDebug>::downcast_mut(out).expect("wrong type");
+                        let this = #this {#(
                             #field_name: {
                                 let mut v = Option::<#field_type>::None;
                                 each(&mut v);
@@ -302,7 +309,7 @@ pub fn blade_impl(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
     };
     let item_guards = match &blade {
         Blade::Enum { guards, .. } | Blade::Struct { guards, .. } => {
-            collect_guards(Some(guards), &quote![rt::Item])
+            collect_guards(Some(guards), &quote![sir::rt::Item])
         },
     };
     let tokens = quote::quote! {{
@@ -316,14 +323,28 @@ pub fn blade_impl(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
         }
     }};
 
-    if option_env!("LOG_BLADE_IMPL_MACRO").is_some() {
+    let should_log = {
+        if let Some(log) = option_env!("LOG_BLADE_IMPL_MACRO") {
+            if log == "ALL" || log == "all" || log == "1" {
+                true
+            } else {
+                log == format!("{}", blade.name())
+            }
+        } else {
+            false
+        }
+    };
+
+    if should_log {
         use std::process::*;
         use std::io::Write;
         use std::fs::File;
         use std::sync::atomic::{AtomicUsize, Ordering};
         static COUNT: AtomicUsize = AtomicUsize::new(0);
-        let n = COUNT.fetch_add(1, Ordering::SeqCst);
-        let path = format!("/tmp/blade_impl_{}.rs", n);
+        let n = COUNT.fetch_add(1, Ordering::SeqCst) + (std::process::id() as usize) * 10_000;
+        let path = option_env!("LOG_BLADE_IMPL_MACRO_OUTPUT").unwrap_or("/tmp/blade_impl_%.rs");
+        let path = path.replace("%", &format!("{}", n));
+        eprintln!("{} -> {}", blade.name(), path);
         let path: &str = &path;
         if let Ok(mut o) = File::create(path) {
             if write!(o, "fn deleteme() {{ {} }}", tokens).is_ok() {

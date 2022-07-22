@@ -1,3 +1,5 @@
+//! Describing the structure of types. Self-explanatory? Start with [`Sword`].
+
 use std::fmt;
 use std::sync::Arc;
 use crate::Name;
@@ -7,6 +9,7 @@ use crate::chivalry::{SyntaxPosition, ValidAt};
 use std::any::{Any, TypeId};
 use crate::Blade;
 
+/// `StdAny + Send + Sync`
 pub type SSAny<'a> = &'a (dyn Any + Send + Sync);
 
 #[derive(Clone)]
@@ -32,7 +35,7 @@ pub struct BodyStruct {
 #[derive(Clone)]
 pub struct BodyEnum {
     pub variants: Vec<Arc<Variant>>,
-    /// NB: This is *NOT* Rust's discrim, it's the index into variants.
+    /// NB: This is *NOT* Rust's discrim, it's the index into `variants`.
     pub variant_index: fn(&dyn AnyDebug) -> usize,
 }
 // This name isn't very good; why should it HAVE to be a Vec?
@@ -87,6 +90,7 @@ impl Field {
     }
 }
 
+/// A marker object. See [`crate::chivalry`].
 #[derive(Clone)]
 pub struct Guard(pub Arc<dyn AnyDebug>);
 impl fmt::Debug for Guard {
@@ -95,7 +99,7 @@ impl fmt::Debug for Guard {
     }
 }
 impl Guard {
-    pub fn new<Position: SyntaxPosition, G: AnyDebug + ValidAt<Position>>(g: G) -> Self {
+    pub fn new<Position: SyntaxPosition, G: ValidAt<Position>>(g: G) -> Self {
         Guard(Arc::new(g))
     }
     fn is_ty(expect: TypeId, any: &dyn AnyDebug) -> bool {
@@ -133,15 +137,22 @@ fn guards0<E: AnyDebug>(guards: &Vec<Guard>) -> impl Iterator<Item=&E> {
         .flat_map(|g| <dyn AnyDebug>::downcast_ref::<E>(g))
 }
 
+/// Represents `&mut Option<T>`. Used to move values in or out. Initiailize by `*aot = Some(_)`,
+/// take by `aot.take().unwrap()`.
 pub type AnyOptionT<'a> = &'a mut dyn AnyDebug;
+/// An [`AnyDebug`] parameter that is used as a `self`.
 pub type AnyThis = dyn AnyDebug;
+/// The key used in a Map.
 pub type AnyKey<'a> = &'a dyn AnyDebug;
+/// Some `&mut Option<(Key, Value)>`; used for Maps.
 pub type AnyOptionPair<'a> = AnyOptionT<'a>;
 
+/// A function that will be immediately invoked with an iterator over some Vec.
 pub type VecIterFn<'a> = &'a mut dyn FnMut(
     &mut dyn Iterator<Item=&dyn AnyDebug>,
 );
 
+/// Dynamic virtual table for Vec-like types.
 #[derive(Clone)]
 pub struct CollectionVec {
     pub len: fn(&AnyThis) -> usize,
@@ -153,10 +164,12 @@ pub struct CollectionVec {
     pub collect: fn(AnyOptionT, Option<usize> /* reserve. Does not limit callback count. */, &mut dyn FnMut(AnyOptionT)),
 }
 
+/// A function that will be immediately invoked with an iterator over some Map.
 pub type MapIterFn<'a> = &'a mut dyn FnMut(
     &mut dyn Iterator<Item=(AnyKey, &dyn AnyDebug)>,
 );
 
+/// Dynamic virtual table for Map-like types.
 #[derive(Clone)]
 pub struct CollectionMap {
     pub len: fn(&AnyThis) -> usize,
@@ -169,6 +182,7 @@ pub struct CollectionMap {
 }
 
 
+/// The root of a type; points to an [`Item`].
 #[derive(Clone)]
 pub struct Sword {
     pub item: Arc<Item>,

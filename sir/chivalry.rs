@@ -1,12 +1,15 @@
-//! Common vocabulary types for guards.
+//! Common vocabulary types for guards. Knights should try to implement appropriate handling for
+//! them. Any type implementing [`ValidAt`] can be a guard.
 
-use crate::{Name, rt};
 use std::any::Any;
 use std::{mem, fmt};
+use crate::{Name, rt};
+use crate::util::AnyDebug;
 
 /// All guards must implement `ValidAt<Rt, V>` where `Rt` is `rt::Item` or `rt::Field`, and V is
 /// the value that appears there.
-pub trait ValidAt<P: SyntaxPosition> {}
+pub trait ValidAt<P: SyntaxPosition>: AnyDebug {}
+/// Specifies a place that a [`crate::rt::Guard`] may be placed.
 pub trait SyntaxPosition {}
 impl SyntaxPosition for crate::rt::Item {}
 impl SyntaxPosition for crate::rt::Field {}
@@ -54,6 +57,17 @@ pub struct TotalWrite(pub fn(&dyn Any) -> &[u8]);
 
 impl ValidAt<crate::rt::Item> for TotalRead {}
 impl ValidAt<crate::rt::Item> for TotalWrite {}
+
+impl fmt::Debug for TotalRead {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "TotalRead(_)")
+    }
+}
+impl fmt::Debug for TotalWrite {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "TotalWrite(_)")
+    }
+}
 
 /// This is the default, rather than `TotalRead`/`TotalWrite`. Provided to enable explicit
 /// configuration.

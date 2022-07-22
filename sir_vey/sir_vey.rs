@@ -313,7 +313,9 @@ fn main() {
     }
     impl Blade for MindLevel {
         blade! {
-            struct MindLevel where {},
+            struct MindLevel where {
+                sir::chivalry::NonTotalMem,
+            },
             name: String,
             anger: Option<i8>,
             foo: Result<i8, bool>,

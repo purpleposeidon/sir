@@ -5,14 +5,29 @@ extern crate sir_macro;
 #[doc(hidden)]
 pub use sir_macro::blade_impl;
 
-#[macro_export]
-macro_rules! orphan_blade {
-    ($($tt:tt)*) => {
-        $crate::blade_impl!($($tt)*);
-    };
-}
-
-
+/// Implements the body of [`Blade`](trait.Blade.html).
+///
+/// # Syntax
+///
+/// The body should mirror (as appropriate) the contents of the type.
+/// A `where {}` can be added on the end to place [guards](rt/struct.Guard.html),
+/// which is filled with values to add to the guard. This list is mandatory on the first line.
+///
+/// ```rust
+/// # type T = ();
+/// sir::blade! {
+///     enum Option::<T> where {},
+///     None where {},
+///     Some(T where {}) where {},
+/// }
+/// ```
+///
+/// # Debugging
+/// The output can be logged to a file by setting the env var `LOG_BLADE_IMPL_MACRO` to the name (eg `Option`
+/// for `std::option::Option`), or `ALL`. The output is written to `/tmp/blade_impl_%.rs`, or the path specified by the env var
+/// `LOG_BLADE_IMPL_MACRO_OUTPUT` with any `%` replaced by a number.
+///
+/// `rustfmt` must be installed.
 #[macro_export]
 macro_rules! blade {
     ($($tt:tt)*) => {
@@ -21,6 +36,15 @@ macro_rules! blade {
                 $($tt)*
             }
         }
+    };
+}
+
+/// Construct a [`Sword`](rt/struct.Sword.html).
+/// See [`blade!`](macro.blade.html).
+#[macro_export]
+macro_rules! sword {
+    ($($tt:tt)*) => {
+        $crate::blade_impl!($($tt)*);
     };
 }
 
@@ -42,6 +66,7 @@ pub mod prelude_macro {
     pub use crate::util::{Ty, AnyDebug};
     pub use std::borrow::Cow;
     pub use std::sync::Arc;
+    pub use std::any::Any as StdAny;
 
     #[doc(hidden)]
     #[cold]
@@ -62,6 +87,8 @@ mod blade_trait {
         panic!("type mismatch: expected a {}, found: {:?}", ty, t)
     }
 
+    /// Trait providing the default [`Sword`] for a type.
+    /// A Knight should allow registration of both `impl Blade` and `Sword` parameters.
     pub trait Blade: AnyDebug {
         // NOTE: Sword has a lot of Arc's. I was thinking I'd like to be able to recycle them. But
         // in fact I would not; really it's just there to make Eq easy.

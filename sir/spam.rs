@@ -9,7 +9,7 @@ impl fmt::Debug for Item {
             .field("ty", &self.ty)
             .field("guards", &self.guards)
             //.field("body", &self.body)
-            .finish_non_exhaustive()
+            .finish()
     }
 }
 impl fmt::Debug for Body {
@@ -28,14 +28,14 @@ impl fmt::Debug for BodyStruct {
         f.debug_struct("BodyStruct")
             .field("body_type", &self.body_type)
             .field("fields", &self.fields)
-            .finish_non_exhaustive()
+            .finish()
     }
 }
 impl fmt::Debug for BodyEnum {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("BodyEnum")
             .field("variants", &self.variants)
-            .finish_non_exhaustive()
+            .finish()
     }
 }
 impl fmt::Debug for Field {
@@ -94,14 +94,14 @@ impl fmt::Debug for Variant {
             .field("name", &self.name)
             .field("body_type", &self.body_type)
             .field("fields", &self.fields)
-            .finish_non_exhaustive()
+            .finish()
     }
 }
 impl fmt::Debug for BodyVec {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("BodyVec")
             .field("items", &self.items)
-            .finish_non_exhaustive()
+            .finish()
     }
 }
 impl fmt::Debug for BodyMap {
@@ -109,6 +109,6 @@ impl fmt::Debug for BodyMap {
         f.debug_struct("BodyMap")
             .field("keys", &self.keys)
             .field("vals", &self.vals)
-            .finish_non_exhaustive()
+            .finish()
     }
 }

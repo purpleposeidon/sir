@@ -38,7 +38,7 @@ impl<K: Key> CArena<K> {
         let seed = COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         assert!(seed >= 1, "ohh husbant you creat too many CArena. now we are unsound.");
         CArena {
-            buf: vec![],
+            buf: vec![0; std::mem::size_of::<usize>()], // lazy work-around for 0-sized types
             seed,
             _ctx: [],
             handle_buf: vec![],
@@ -84,7 +84,7 @@ impl<K: Key> CArena<K> {
         K::Ctx: 'b,
         K::R: 'c,
     {
-        assert_eq!(handle.seed, self.seed);
+        assert_eq!(handle.seed, self.seed, "handle for wrong generation");
         let ptr: [usize; 2] = [
             handle.index as usize + &self.buf[0] as *const u8 as usize,
             handle.vtable,
@@ -130,10 +130,10 @@ impl<K: Key> CC<K> {
 pub struct CR;
 pub struct CW;
 pub struct Ctx<F, C> {
-    _c: C,
-    fd: F,
-    val: *const dyn AnyDebug,
-    out: *mut dyn AnyDebug,
+    pub _c: C,
+    pub fd: F,
+    pub val: *const dyn AnyDebug,
+    pub out: *mut dyn AnyDebug,
 }
 impl<W: io::Write> Key for Ctx<W, CW> {
     type Ctx = Self;
@@ -256,17 +256,15 @@ impl<R: io::Read> Ctx<R, CR> {
         crate::bincode::decode_from_std_read(&mut self.fd, config)
     }
     fn fix_read1<T: AnyDebug + bincode::de::Decode>(&mut self, out: &mut dyn AnyDebug) -> DeelResult {
-        {
+        if let Some(out) = out.downcast_mut::<Option<T>>() {
+            debug_assert!(out.is_none());
+            *out = Some(self.fix_read0::<T>()?);
+            Ok(())
+        } else {
             let expect = Ty::of::<Option<T>>();
             let actual = <dyn AnyDebug>::get_ty(out);
-            if expect != actual {
-                panic!("wrong type: expect {}, got {}", expect, actual)
-            }
+            panic!("wrong type: expect {}, got {}", expect, actual)
         }
-        let out: &mut Option<T> = out.downcast_mut().expect("wrong type");
-        assert!(out.is_none());
-        *out = Some(self.fix_read0::<T>()?);
-        Ok(())
     }
 }
 impl<R: io::Read> CC<Ctx<R, CR>> {

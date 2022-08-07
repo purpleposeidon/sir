@@ -101,6 +101,15 @@ pub struct Handle {
     index: u32,
     vtable: usize,
 }
+impl Handle {
+    pub const fn invalid() -> Handle {
+        Handle {
+            seed: 0,
+            index: u32::MAX,
+            vtable: 0,
+        }
+    }
+}
 
 
 pub struct CC<K: Key> {
@@ -546,6 +555,7 @@ impl<R: io::Read> DecoderBuilder<R> {
     }
 }
 
+#[cfg(test)]
 #[test]
 fn main() {
     let mut kingdom = Kingdom::empty();

@@ -102,6 +102,7 @@ pub struct Handle {
     vtable: usize,
 }
 impl Handle {
+    #[doc(hidden)]
     pub const fn invalid() -> Handle {
         Handle {
             seed: 0,

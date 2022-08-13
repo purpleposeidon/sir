@@ -11,20 +11,19 @@ use crate::sir::rt::{self, Body, AnyOptionT};
 use crate::sir::util::{AnyDebug, Ty};
 
 pub trait Key {
-    type Ctx;
     type R;
 }
-pub trait KCall<K: Key>: Fn(&CArena<K>, &mut K::Ctx) -> K::R + 'static {}
+pub trait KCall<K: Key>: Fn(&CArena<K>, &mut K) -> K::R + 'static {}
 impl<K, F> KCall<K> for F
 where
     K: Key,
-    F: Fn(&CArena<K>, &mut K::Ctx) -> K::R + 'static,
+    F: Fn(&CArena<K>, &mut K) -> K::R + 'static,
 {}
 
 pub struct CArena<K: Key> {
     buf: Vec<u8>,
     seed: u32,
-    _ctx: [fn(K); 0],
+    _ctx: [K; 0],
     pub handle_buf: Vec<Handle>,
     pub field_as_ref: Vec<fn(&dyn AnyDebug) -> &dyn AnyDebug>,
     pub field_as_mut: Vec<fn(&mut dyn AnyDebug) -> &mut dyn AnyDebug>,
@@ -79,9 +78,9 @@ impl<K: Key> CArena<K> {
             handle
         }
     }
-    pub fn run<'a, 'b, 'c>(&'a self, handle: Handle, ctx: &'b mut K::Ctx) -> K::R
+    pub fn run<'a, 'b, 'c>(&'a self, handle: Handle, ctx: &'b mut K) -> K::R
     where
-        K::Ctx: 'b,
+        K: 'b,
         K::R: 'c,
     {
         assert_eq!(handle.seed, self.seed, "handle for wrong generation");
@@ -137,26 +136,15 @@ impl<K: Key> CC<K> {
     }
 }
 
-pub struct CR;
-pub struct CW;
+pub type CR = *mut dyn AnyDebug;
+pub type CW = *const dyn AnyDebug;
 pub struct Ctx<F, C> {
-    pub _c: C,
+    pub val: C,
     pub fd: F,
-    pub val: *const dyn AnyDebug,
-    pub out: *mut dyn AnyDebug,
 }
 impl<W: io::Write> Key for Ctx<W, CW> {
-    type Ctx = Self;
     type R = EelResult;
 }
-impl<F: io::Write> Ctx<F, CW> {
-    pub fn val<'a>(&'a self) -> &'a dyn AnyDebug {
-        unsafe { &*self.val }
-    }
-}
-/*impl<F: io::Read> Ctx<F> {
-    pub fn val<'a>(&'a mut self) -> &'a 
-}*/
 
 use crate::bincode::error::{EncodeError, DecodeError};
 pub type EelResult = Result<usize, EncodeError>;
@@ -280,7 +268,7 @@ impl<R: io::Read> Ctx<R, CR> {
 impl<R: io::Read> CC<Ctx<R, CR>> {
     pub fn prim<T: AnyDebug + bincode::de::Decode>(&mut self) {
         self.add(Ty::of::<T>(), |_arena: &CArena<Ctx<R, CR>>, ctx: &mut Ctx<R, CR>| {
-            let out = unsafe { &mut *ctx.out };
+            let out = unsafe { &mut *ctx.val };
             ctx.fix_read1::<T>(out)
         });
     }
@@ -296,19 +284,19 @@ fn r_fields<R: io::Read>(
     }
     let fhend: u16 = cc.arena.handle_buf.len().try_into().unwrap();
     let f = move |arena: &CArena<Ctx<R, CR>>, ctx: &mut Ctx<R, CR>| -> DeelResult {
-        let out: &mut dyn AnyDebug = unsafe { &mut *ctx.out };
+        let out: &mut dyn AnyDebug = unsafe { &mut *ctx.val };
         let mut iter = arena.handle_buf[fhstart as usize .. fhend as usize].iter();
         let mut err = Ok(());
         init(out, &mut |field: &mut dyn AnyDebug| {
             if let Some(&handle) = iter.next() {
-                ctx.out = field;
+                ctx.val = field;
                 err = arena.run(handle, ctx);
                 if err.is_err() {
                     while iter.next().is_some() {}
                 }
             }
         });
-        ctx.out = out;
+        ctx.val = out;
         err
     };
     cc.write(f)
@@ -434,7 +422,6 @@ impl<W: io::Write> EncoderBuilder<W> {
 
 pub type DeelResult = Result<(), DecodeError>;
 impl<R: io::Read> Key for Ctx<R, CR> {
-    type Ctx = Self;
     type R = DeelResult;
 }
 
@@ -505,19 +492,19 @@ impl<R: io::Read> DecoderBuilder<R> {
                     let items = self.cc.get(body.items);
                     let collect = body.vt.collect;
                     let f = move |arena: &CArena<Ctx<R, CR>>, ctx: &mut Ctx<R, CR>| -> DeelResult {
-                        let out = unsafe { &mut *ctx.out };
+                        let out = unsafe { &mut *ctx.val };
                         let mut len: usize = ctx.var_read0()?;
                         let mut err = Ok(());
                         collect(out, Some(len), &mut |hold| {
                             if len == 0 { return; }
                             len -= 1;
-                            ctx.out = hold;
+                            ctx.val = hold;
                             err = arena.run(items, ctx);
                             if err.is_err() {
                                 len = 0;
                             }
                         });
-                        ctx.out = out;
+                        ctx.val = out;
                         err
                     };
                     self.cc.add(ty, f);
@@ -527,25 +514,25 @@ impl<R: io::Read> DecoderBuilder<R> {
                     let vals = self.cc.get(body.vals);
                     let collect = body.vt.collect;
                     let f = move |arena: &CArena<Ctx<R, CR>>, ctx: &mut Ctx<R, CR>| -> DeelResult {
-                        let out = unsafe { &mut *ctx.out };
+                        let out = unsafe { &mut *ctx.val };
                         let mut len: usize = ctx.var_read0()?;
                         let mut err = Ok(());
                         collect(out, Some(len), &mut |hold_key, hold_val| {
                             if len == 0 { return; }
                             len -= 1;
-                            ctx.out = hold_key;
+                            ctx.val = hold_key;
                             err = arena.run(keys, ctx);
                             if err.is_err() {
                                 len = 0;
                                 return;
                             }
-                            ctx.out = hold_val;
+                            ctx.val = hold_val;
                             err = arena.run(vals, ctx);
                             if err.is_err() {
                                 len = 0;
                             }
                         });
-                        ctx.out = out;
+                        ctx.val = out;
                         err
                     };
                     self.cc.add(ty, f);
@@ -584,10 +571,8 @@ fn main() {
         };
         trace!(val);
         let mut ctx = Ctx {
-            _c: CW,
+            val: &val as *const dyn AnyDebug,
             fd: Vec::<u8>::new(),
-            val: &val,
-            out: &mut (),
         };
         let ty = AnyDebug::get_ty(&val);
         let handle = *cc.known.get(&ty).unwrap_or_else(|| panic!("Handling for {} was not compiled", ty));
@@ -607,10 +592,8 @@ fn main() {
     {
         let mut out = Option::<AT>::None;
         let mut ctx = Ctx {
-            _c: CR,
+            val: &mut out as *mut dyn AnyDebug,
             fd: Cursor::new(&fd[..]),
-            val: &(),
-            out: &mut out,
         };
         let ty = Ty::of::<AT>();
         let handle = *cc.known.get(&ty).unwrap_or_else(|| panic!("Handling for {} was not compiled", ty));

@@ -3,9 +3,3 @@ members = ["sir_macro", "sir", "sir_mark", "sir_mun", "sir_vey", "sir_eel"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-
-#[dependencies]
-## TODO: These impls should get their own crates.
-#[dev-dependencies]
-#rlua = "0.9.*"
-#bincode = { git = "https://github.com/bincode-org/bincode", default-features = false, features = ["std", "alloc"] }

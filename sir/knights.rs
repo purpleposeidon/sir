@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use crate::Blade;
 use crate::rt::*;
-use crate::util::{AnyDebug, Ty};
+use ezty::{AnyDebug, Ty};
 
 #[doc(hidden)]
 pub fn a2r<R: AnyDebug>(a: &dyn AnyDebug) -> &R {
@@ -56,7 +56,7 @@ impl KingdomBuilder {
     pub fn add_blade(&mut self, sword: Sword) {
         self.swords.insert(sword.item.ty.clone(), sword);
     }
-    pub fn remove<T>(&mut self) {
+    pub fn remove<T: 'static>(&mut self) {
         self.swords.remove(&Ty::of::<T>());
     }
     pub fn build(mut self) -> Kingdom {
@@ -71,12 +71,12 @@ impl KingdomBuilder {
                 };
             }
             if ty != sty {
-                hole!("{} is not {:?}", ty.name, sty.name);
+                hole!("{} is not {:?}", ty.name(), sty.name());
             }
             use crate::rt::*;
             let validate_ty = |ty: &Ty| {
                 if !known.contains(ty) {
-                    hole!("unregistered {} in {}", ty.name, sty.name);
+                    hole!("unregistered {} in {}", ty.name(), sty.name());
                 }
             };
             let validate_fields = |body_type: BodyType, fields: &Vec<Arc<Field>>| {
@@ -127,7 +127,7 @@ impl Kingdom {
         visitor: &mut dyn BodyVisitor<Err=E>,
     ) -> Result<(), E> {
         let sword = self.swords.get(&ty)
-            .unwrap_or_else(|| panic!("missing sword {}", ty));
+            .unwrap_or_else(|| panic!("missing sword {:?}", ty));
         self.visit_sword(sword, visitor)
     }
     pub fn visit_sword<'a, E>(

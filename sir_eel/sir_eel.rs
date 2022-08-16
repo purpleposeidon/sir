@@ -261,7 +261,7 @@ impl<R: io::Read> Ctx<R, CR> {
         } else {
             let expect = Ty::of::<Option<T>>();
             let actual = <dyn AnyDebug>::get_ty(out);
-            panic!("wrong type: expect {}, got {}", expect, actual)
+            panic!("wrong type: expect {:?}, got {:?}", expect, actual)
         }
     }
 }
@@ -575,7 +575,7 @@ fn main() {
             fd: Vec::<u8>::new(),
         };
         let ty = AnyDebug::get_ty(&val);
-        let handle = *cc.known.get(&ty).unwrap_or_else(|| panic!("Handling for {} was not compiled", ty));
+        let handle = *cc.known.get(&ty).unwrap_or_else(|| panic!("Handling for {:?} was not compiled", ty));
         let ret = cc.arena.run(handle, &mut ctx);
         trace!(ret);
         trace!(ctx.fd);
@@ -596,7 +596,7 @@ fn main() {
             fd: Cursor::new(&fd[..]),
         };
         let ty = Ty::of::<AT>();
-        let handle = *cc.known.get(&ty).unwrap_or_else(|| panic!("Handling for {} was not compiled", ty));
+        let handle = *cc.known.get(&ty).unwrap_or_else(|| panic!("Handling for {:?} was not compiled", ty));
         let ret = cc.arena.run(handle, &mut ctx);
         trace!(ret);
         trace!(out);

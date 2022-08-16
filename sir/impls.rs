@@ -1,4 +1,4 @@
-use crate::util::Ty;
+use ezty::Ty;
 use crate::rt::*;
 use crate::Blade;
 use std::collections::HashMap;
@@ -57,8 +57,6 @@ impl<T: Blade> Blade for Box<T> {
 
 impl<T: Blade> Blade for Vec<T> {
     fn sword() -> Sword {
-        use crate::rt::*;
-        use crate::util::*;
         Sword {
             item: Arc::new(Item {
                 ty: Ty::of::<Self>(),
@@ -120,8 +118,6 @@ where
     V: AnyDebug,
 {
     fn sword() -> Sword {
-        use crate::rt::*;
-        use crate::util::*;
         Sword {
             item: Arc::new(Item {
                 ty: Ty::of::<Self>(),

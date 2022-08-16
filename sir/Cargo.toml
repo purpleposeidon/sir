@@ -9,6 +9,6 @@ path = "./sir.rs"
 [dependencies]
 sir_macro = { path = "../sir_macro", version = "0.1.0" }
 mopa = "0.2"
-#eztrace = "*"
+ezty = "0.1"
 
 #field-offset = "0.3"

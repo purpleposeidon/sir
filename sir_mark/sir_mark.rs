@@ -3,7 +3,7 @@ extern crate sir;
 use sir::rt::*;
 use sir::chivalry::*;
 use sir::knights::{Kingdom, BodyVisitor, Visit};
-use sir::util::AnyDebug;
+use sir::util::{AnyDebug, Ty};
 use std::fmt;
 
 pub struct Mark {

@@ -2,9 +2,8 @@
 
 use std::fmt;
 use std::sync::Arc;
+use ezty::{Ty, AnyDebug};
 use crate::Name;
-pub use crate::util::Ty;
-use crate::util::AnyDebug;
 use crate::chivalry::{SyntaxPosition, ValidAt};
 use std::any::{Any, TypeId};
 use crate::Blade;

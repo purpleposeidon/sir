@@ -4,7 +4,7 @@ extern crate rlua;
 use sir::rt::*;
 use sir::chivalry::*;
 use sir::knights::{Kingdom, BodyVisitor, Visit};
-use sir::util::AnyDebug;
+use sir::util::{AnyDebug, Ty};
 use std::any::type_name;
 use std::collections::HashMap;
 
@@ -232,7 +232,7 @@ impl<'a, 'lua, 'dst> BodyVisitor for MunVisitor<'a, 'lua, 'dst> {
             Err(rlua::Error::FromLuaConversionError {
                 from: key.0.name(),
                 to: self.mun.kingdom.swords.get(&key.1)
-                    .map(|s| s.item.ty.name)
+                    .map(|s| s.item.ty.name())
                     .unwrap_or("<type not registered>"),
                 message: Some(format!("in {}", path)),
             })
@@ -270,7 +270,7 @@ impl<'a, 'lua, 'dst> BodyVisitor for MunVisitor<'a, 'lua, 'dst> {
         let err = |from: &'static str, message: &str| -> Result<(), rlua::Error> {
             Err(rlua::Error::FromLuaConversionError {
                 from,
-                to: visit.item.ty.name,
+                to: visit.item.ty.name(),
                 message: Some(format!("{}", message)),
             })
         };

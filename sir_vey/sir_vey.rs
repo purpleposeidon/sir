@@ -2,7 +2,7 @@ extern crate sir;
 
 use sir::rt::*;
 use sir::knights::{Kingdom, BodyVisitor, Visit, a2r};
-use sir::util::AnyDebug;
+use sir::util::{AnyDebug, Ty};
 use std::collections::HashMap;
 
 
@@ -74,7 +74,7 @@ impl<'a> BodyVisitor for VeyVisitor<'a> {
         Ok(())
     }
     fn visit_struct(&mut self, visit: Visit<BodyStruct>) -> VeyR {
-        print!("{}", visit.item.ty.name);
+        print!("{}", visit.item.ty.name());
         let closer = open_bt(visit.body.body_type);
         if closer == "" { return Ok(()); }
         let d = if visit.body.body_type == BodyType::Tuple {

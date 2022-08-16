@@ -1,6 +1,3 @@
-#[macro_use]
-extern crate mopa;
-
 extern crate sir_macro;
 #[doc(hidden)]
 pub use sir_macro::blade_impl;
@@ -52,13 +49,16 @@ macro_rules! sword {
 #[doc(hidden)]
 pub use crate as sir;
 
-pub mod util;
 pub mod rt;
 mod spam;
 mod impls;
 pub mod knights;
 
 pub type Name = &'static str;
+
+pub mod util {
+    pub use ezty::{Ty, AnyDebug};
+}
 
 #[doc(hidden)]
 pub mod prelude_macro {

@@ -114,27 +114,6 @@ impl Guard {
         self.0.downcast_ref()
     }
 }
-impl Item {
-    pub fn guard<E: AnyDebug>(&self) -> Option<&E> {
-        guards0::<E>(&self.guards).next()
-    }
-    pub fn guards<E: AnyDebug>(&self) -> impl Iterator<Item=&E> {
-        guards0::<E>(&self.guards)
-    }
-}
-impl Field {
-    pub fn guard<E: AnyDebug>(&self) -> Option<&E> {
-        guards0::<E>(&self.guards).next()
-    }
-    pub fn guards<E: AnyDebug>(&self) -> impl Iterator<Item=&E> {
-        guards0::<E>(&self.guards)
-    }
-}
-fn guards0<E: AnyDebug>(guards: &Vec<Guard>) -> impl Iterator<Item=&E> {
-    guards
-        .iter()
-        .flat_map(|g| <dyn AnyDebug>::downcast_ref::<E>(g))
-}
 
 /// Represents `&mut Option<T>`. Used to move values in or out. Initiailize by `*aot = Some(_)`,
 /// take by `aot.take().unwrap()`.

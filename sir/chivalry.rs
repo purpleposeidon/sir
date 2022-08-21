@@ -4,16 +4,31 @@
 use std::any::Any;
 use std::{mem, fmt};
 use crate::{Name, rt};
-use crate::util::AnyDebug;
+use crate::util::{AnyDebug, Ty};
+use crate::rt::Guard;
 
 /// All guards must implement `ValidAt<Rt, V>` where `Rt` is `rt::Item` or `rt::Field`, and V is
 /// the value that appears there.
 pub trait ValidAt<P: SyntaxPosition>: AnyDebug {}
-/// Specifies a place that a [`crate::rt::Guard`] may be placed.
-pub trait SyntaxPosition {}
-impl SyntaxPosition for crate::rt::Item {}
-impl SyntaxPosition for crate::rt::Field {}
-impl SyntaxPosition for crate::rt::Variant {}
+/// Specifies a place that a [`Guard`] may be placed.
+pub trait SyntaxPosition {
+    fn get_guards(&self) -> &[Guard];
+}
+impl SyntaxPosition for crate::rt::Item {
+    fn get_guards(&self) -> &[Guard] {
+        &self.guards[..]
+    }
+}
+impl SyntaxPosition for crate::rt::Field {
+    fn get_guards(&self) -> &[Guard] {
+        &self.guards[..]
+    }
+}
+impl SyntaxPosition for crate::rt::Variant {
+    fn get_guards(&self) -> &[Guard] {
+        &self.guards[..]
+    }
+}
 
 /// Provide a missing value.
 /// The function's parameter is `&mut Option<T>`; it should set it to `Some(T::default())`.
@@ -126,7 +141,87 @@ impl Default for EnumTag {
 }
 impl ValidAt<rt::Item> for EnumTag {}
 
+/// Serialize to nothing. Deserialize using Default.
+#[derive(Copy, Clone)]
+pub struct Skip(pub fn(&mut dyn AnyDebug));
+impl fmt::Debug for Skip {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Skip(0x{:x?})", self.0 as usize)
+    }
+}
+impl Skip {
+    pub fn default<T: AnyDebug + Default>() -> Self {
+        Skip(|out: &mut dyn AnyDebug| {
+            let out: &mut Option<T> = out.downcast_mut().expect("wrong type");
+            *out = Some(T::default());
+        })
+    }
+}
+impl ValidAt<rt::Field> for Skip {}
+
+
 // It'd need to be VariantDiscrim(Box<dyn Any>).
 //#[derive(Debug)]
 //pub struct VariantDiscrim<T>(pub T);
 //impl<T: fmt::Debug> ValidAt<crate::rt::Variant> for VariantDiscrim<T> {}
+
+/// A guard that only a particular knight should use.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct GuardedOnly<T> {
+    pub knight: Ty,
+    pub val: T,
+}
+impl<T> GuardedOnly<T> {
+    pub fn by<K: 'static>(val: T) -> Self {
+        Self {
+            knight: Ty::of::<K>(), // FIXME(rust): TypeId::of not const
+            val,
+        }
+    }
+}
+impl<P: SyntaxPosition, T: ValidAt<P>> ValidAt<P> for GuardedOnly<T> {}
+
+pub fn get_guards<G: AnyDebug>(guards: &[Guard], knight: Ty) -> impl Iterator<Item=&G> {
+    let mut it1 = guards.iter();
+    let mut it2 = guards.iter();
+    std::iter::from_fn(move || -> Option<&G> {
+        while let Some(g) = it1.next() {
+            if let Some(g) = g.as_ref::<GuardedOnly<G>>() {
+                if g.knight == knight {
+                    return Some(&g.val);
+                }
+            }
+        }
+        while let Some(g) = it2.next() {
+            if let Some(g) = g.as_ref::<G>() {
+                return Some(g);
+            }
+        }
+        None
+    })
+}
+
+impl crate::rt::Item {
+    pub fn guard<E: AnyDebug, K: 'static>(&self) -> Option<&E> {
+        self.guards::<E, K>().next()
+    }
+    pub fn guards<E: AnyDebug, K: 'static>(&self) -> impl Iterator<Item=&E> {
+        get_guards::<E>(&self.guards, Ty::of::<K>())
+    }
+}
+impl crate::rt::Field {
+    pub fn guard<E: AnyDebug, K: 'static>(&self) -> Option<&E> {
+        self.guards::<E, K>().next()
+    }
+    pub fn guards<E: AnyDebug, K: 'static>(&self) -> impl Iterator<Item=&E> {
+        get_guards::<E>(&self.guards, Ty::of::<K>())
+    }
+}
+impl crate::rt::Variant {
+    pub fn guard<E: AnyDebug, K: 'static>(&self) -> Option<&E> {
+        self.guards::<E, K>().next()
+    }
+    pub fn guards<E: AnyDebug, K: 'static>(&self) -> impl Iterator<Item=&E> {
+        get_guards::<E>(&self.guards, Ty::of::<K>())
+    }
+}

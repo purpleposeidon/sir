@@ -10,6 +10,9 @@ use std::sync::Arc;
 use crate::sir::rt::{self, Body, AnyOptionT};
 use crate::sir::util::{AnyDebug, Ty};
 
+/// This is used as the `GuardedBy` marker.
+pub struct SirEel;
+
 pub trait Key {
     type R;
 }
@@ -28,7 +31,6 @@ pub struct CArena<K: Key> {
     pub field_as_ref: Vec<fn(&dyn AnyDebug) -> &dyn AnyDebug>,
     pub field_as_mut: Vec<fn(&mut dyn AnyDebug) -> &mut dyn AnyDebug>,
     pub field_with: Vec<fn(&mut dyn FnMut(crate::sir::rt::AnyOptionT))>,
-    //pub init: Vec<fn(AnyOptionT, &mut dyn FnMut(AnyOptionT))>,
 }
 impl<K: Key> CArena<K> {
     pub fn new() -> Self {
@@ -111,16 +113,23 @@ impl Handle {
     }
 }
 
+#[derive(Hash, PartialEq, Eq)]
+pub struct FnKey(usize);
+impl FnKey {
+    pub fn new(f: fn(&mut dyn AnyDebug)) -> Self { Self(f as usize) }
+}
 
 pub struct CC<K: Key> {
     pub arena: CArena<K>,
     pub known: HashMap<Ty, Handle>,
+    pub field_skip: HashMap<FnKey, Handle>,
 }
 impl<K: Key> CC<K> {
     pub fn new() -> Self {
         CC {
             arena: CArena::new(),
             known: HashMap::new(),
+            field_skip: HashMap::new(),
         }
     }
     pub fn write<F: KCall<K>>(&mut self, f: F) -> Handle {
@@ -129,6 +138,23 @@ impl<K: Key> CC<K> {
     pub fn add<F: KCall<K>>(&mut self, ty: Ty, f: F) {
         let handle = self.write(f);
         assert!(self.known.insert(ty, handle).is_none());
+    }
+    pub fn get_skipper(
+        &mut self,
+        get_target: impl (Fn(&mut K) -> &mut dyn AnyDebug) + 'static,
+        init: fn(&mut dyn AnyDebug),
+        ok: impl (Fn(&CArena<K>, &mut K) -> K::R) + 'static,
+    ) -> Handle {
+        let arena = &mut self.arena;
+        *self.field_skip
+            .entry(FnKey::new(init))
+            .or_insert_with(move || {
+                let f = move |arena: &CArena<K>, ctx: &mut K| -> K::R {
+                    init(get_target(ctx));
+                    ok(arena, ctx)
+                };
+                arena.write(f)
+            })
     }
     pub fn get(&self, ty: Ty) -> Handle {
         *self.known.get(&ty)
@@ -214,10 +240,14 @@ impl<W: io::Write> CC<Ctx<W, CW>> {
 fn w_fields<W: io::Write>(cc: &mut CC<Ctx<W, CW>>, fields: &[Arc<rt::Field>]) -> Handle {
     let hfstart: u16 = cc.arena.handle_buf.len().try_into().unwrap();
     let rfstart: u16 = cc.arena.field_as_ref.len().try_into().unwrap();
-    let flen: u16 = fields.len().try_into().unwrap();
+    let mut flen = 0u16;
     for field in fields {
+        if field.guard::<sir::chivalry::Skip, SirEel>().is_some() {
+            continue;
+        }
         cc.arena.handle_buf.push(cc.get(field.ty));
         cc.arena.field_as_ref.push(field.as_ref);
+        flen += 1;
     }
     let f = move |arena: &CArena<Ctx<W, CW>>, ctx: &mut Ctx<W, CW>| -> EelResult {
         let hfstart = hfstart as usize;
@@ -280,7 +310,18 @@ fn r_fields<R: io::Read>(
 ) -> Handle {
     let fhstart: u16 = cc.arena.handle_buf.len().try_into().unwrap();
     for field in fields {
-        cc.arena.handle_buf.push(cc.get(field.ty));
+        let handle = {
+            if let Some(default) = field.guard::<sir::chivalry::Skip, SirEel>() {
+                cc.get_skipper(
+                    |ctx: &mut Ctx<R, CR>| unsafe { &mut *ctx.val },
+                    default.0,
+                    |_, _| -> DeelResult { Ok(()) },
+                )
+            } else {
+                cc.get(field.ty)
+            }
+        };
+        cc.arena.handle_buf.push(handle);
     }
     let fhend: u16 = cc.arena.handle_buf.len().try_into().unwrap();
     let f = move |arena: &CArena<Ctx<R, CR>>, ctx: &mut Ctx<R, CR>| -> DeelResult {
@@ -555,12 +596,50 @@ fn main() {
     kingdom.add::<Result<bool, i32>>();
     kingdom.add::<HashMap<u8, bool>>();
     kingdom.add::<AT>();
+    kingdom.add::<Empty>();
     let kingdom = &kingdom.build();
 
     type W = Vec<u8>;
     let mut builder = EncoderBuilder::<W>::new(kingdom.clone());
     builder.add_prims();
     let cc = builder.compile(|_, _| false);
+
+    {
+        let val = Empty {
+            seen: 10,
+            val: 42,
+            also_seen: 20,
+        };
+        trace!(val);
+        let mut ctx = Ctx {
+            val: &val as *const dyn AnyDebug,
+            fd: Vec::<u8>::new(),
+        };
+        let ty = AnyDebug::get_ty(&val);
+        let handle = *cc.known.get(&ty).unwrap_or_else(|| panic!("Handling for {:?} was not compiled", ty));
+        let ret = cc.arena.run(handle, &mut ctx);
+        trace!(ret);
+        trace!(ctx.fd);
+        assert_eq!(ctx.fd.len(), 2);
+        {
+            let mut builder = DecoderBuilder::<R>::new(kingdom.clone());
+            builder.add_prims();
+            let cc = builder.compile(|_, _| false);
+            let mut out = Option::<Empty>::None;
+            let mut ctx = Ctx {
+                val: &mut out as *mut dyn AnyDebug,
+                fd: io::Cursor::new(&ctx.fd[..]),
+            };
+            let handle = *cc.known.get(&ty).unwrap();
+            let ret = cc.arena.run(handle, &mut ctx);
+            ret.unwrap();
+            let mut out = out.unwrap();
+            assert_eq!(out.val, 0);
+            assert_eq!(val.val, 42);
+            out.val = val.val;
+            assert_eq!(out, val);
+        }
+    }
 
     let fd = {
         let val = AT {
@@ -616,6 +695,23 @@ fn main() {
             x: bool,
             data: Vec<i32>,
             map: HashMap<u8, bool>,
+        }
+    }
+    #[derive(Debug, PartialEq)]
+    struct Empty {
+        seen: u8,
+        val: i32,
+        also_seen: u8,
+    }
+    use sir::chivalry::{GuardedOnly, Skip};
+    impl sir::Blade for Empty {
+        sir::blade! {
+            struct Empty where {},
+            seen: u8,
+            val: i32 where {
+                GuardedOnly::by::<SirEel>(Skip::default::<i32>()),
+            },
+            also_seen: u8,
         }
     }
 }

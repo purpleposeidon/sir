@@ -274,7 +274,7 @@ impl<'a, 'lua, 'dst> BodyVisitor for MunVisitor<'a, 'lua, 'dst> {
                 message: Some(format!("{}", message)),
             })
         };
-        let tag = visit.item.guard::<EnumTag>().unwrap_or(&EnumTag::External);
+        let tag = visit.item.guard::<EnumTag, Mun>().unwrap_or(&EnumTag::External);
         let src = match &self.src {
             rlua::Value::Table(src) => src,
             // FIXME: `nil`-forbidding guard?

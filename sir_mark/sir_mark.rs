@@ -99,7 +99,7 @@ impl<'a, W: fmt::Write> BodyVisitor for MarkVisitor<'a, W> {
             return write!(self.out, "{:?}", variant.name);
         }
         // FIXME: Rust supports custom representation for individual variants, eg enum A { B=3 }
-        let tag = visit.item.guard::<EnumTag>().unwrap_or(&EnumTag::External);
+        let tag = visit.item.guard::<EnumTag, Mark>().unwrap_or(&EnumTag::External);
         // Ok(3) becomes ...
         match tag {
             // { Ok = { 3 } }

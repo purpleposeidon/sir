@@ -41,7 +41,7 @@ macro_rules! blade {
 #[macro_export]
 macro_rules! sword {
     ($($tt:tt)*) => {
-        $crate::blade_impl!($($tt)*);
+        $crate::blade_impl!($($tt)*)
     };
 }
 

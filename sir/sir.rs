@@ -125,20 +125,21 @@ pub use self::blade_trait::Blade;
 /// ```
 #[macro_export]
 macro_rules! tuple_sword {
-    ($($n:literal: $t:ty),*) => {{
+    ($($n:tt: $t:ty),*) => {{
         use $crate::prelude_macro::*;
+        type Tup = ($($t,)*);
         Sword {
             item: Arc::new(Item {
-                ty: Ty::of::<($($t,)*)>(),
+                ty: Ty::of::<Tup>(),
                 guards: vec![],
                 body: Body::Struct(Arc::new(BodyStruct {
                     body_type: BodyType::Tuple,
                     fields: vec![
                         $(Arc::new(Field {
-                            name: literal!($n),
+                            name: stringify!($n),
                             ty: Ty::of::<u32>(),
-                            as_ref: |d| &d.downcast_ref::<($($t,)*)>().unwrap().0,
-                            as_mut: |d| &mut d.downcast_mut::<($($t,),*)>().unwrap().0,
+                            as_ref: |d| &d.downcast_ref::<Tup>().unwrap().$n,
+                            as_mut: |d| &mut d.downcast_mut::<Tup>().unwrap().$n,
                             with: |f: &mut dyn FnMut(AnyOptionT)| {
                                 let mut val = Option::<$t>::None;
                                 f(&mut val);
@@ -148,7 +149,7 @@ macro_rules! tuple_sword {
                     ],
                     // This could almost be done w/o a macro; but `init` is the problem.
                     init: |out: AnyOptionT, each: &mut dyn FnMut(AnyOptionT)| {
-                        let out: &mut Option<($($t,)*)> = out.downcast_mut().expect("wrong type (enum)");
+                        let out: &mut Option<Tup> = out.downcast_mut().expect("wrong type (enum)");
                         let this = ($({
                             let mut v = Option::<$t>::None;
                             each(&mut v);
@@ -160,4 +161,10 @@ macro_rules! tuple_sword {
             }),
         }
     }};
+}
+
+#[cfg(test)]
+#[test]
+fn test_tuple_sword() {
+    tuple_sword!(0: i32, 1: u8);
 }

@@ -85,6 +85,7 @@ impl<'a> BodyVisitor for VeyVisitor<'a> {
         let depth = self.depth + d;
         let mut first = true;
         for field in visit.body.fields.iter() {
+            if field.guard::<sir::chivalry::Skip, Vey>().is_some() { continue; }
             let mut sub = VeyVisitor {
                 kingdom: self.kingdom,
                 depth,
@@ -121,6 +122,7 @@ impl<'a> BodyVisitor for VeyVisitor<'a> {
         if let BodyType::Struct = variant.body_type {
             let depth = self.depth + 1;
             for field in variant.fields.iter() {
+                if field.guard::<sir::chivalry::Skip, Vey>().is_some() { continue; }
                 let mut sub = VeyVisitor {
                     kingdom: self.kingdom,
                     depth,

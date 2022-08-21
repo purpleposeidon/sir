@@ -1,13 +1,13 @@
 [package]
 name = "sir"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2018"
 
 [lib]
 path = "./sir.rs"
 
 [dependencies]
-sir_macro = { path = "../sir_macro", version = "0.1.0" }
+sir_macro = { path = "../sir_macro" }
 mopa = "0.2"
 ezty = "0.1"
 

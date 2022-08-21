@@ -43,9 +43,11 @@ impl<'a, W: fmt::Write> MarkVisitor<'a, W> {
         write!(self.out, "{:width$}", "", width = self.depth * 4).ok();
     }
     fn write_variant(&mut self, variant: &Variant) -> fmt::Result {
+        // FIXME: This should probably be "write_fields".
         let mut first = true;
         let val = self.val;
         for field in variant.fields.iter() {
+            if field.guard::<sir::chivalry::Skip, Mark>().is_some() { continue; }
             if first { first = false; }
             else { write!(self.out, ", ")?; }
             self.val = (field.as_ref)(val);
@@ -67,6 +69,7 @@ impl<'a, W: fmt::Write> BodyVisitor for MarkVisitor<'a, W> {
                 write!(self.out, "{{ ")?;
                 let mut first = true;
                 for field in visit.body.fields.iter() {
+                    if field.guard::<sir::chivalry::Skip, Mark>().is_some() { continue; }
                     if first { first = false; }
                     else { write!(self.out, ", ")?; }
                     self.val = (field.as_ref)(val);
@@ -79,6 +82,7 @@ impl<'a, W: fmt::Write> BodyVisitor for MarkVisitor<'a, W> {
                 writeln!(self.out, "{{")?;
                 self.depth += 1;
                 for field in visit.body.fields.iter() {
+                    if field.guard::<sir::chivalry::Skip, Mark>().is_some() { continue; }
                     self.indent();
                     write!(self.out, "{} = ", field.name)?; // FIXME: Assumes lua likes this name.
                     self.val = (field.as_ref)(val);

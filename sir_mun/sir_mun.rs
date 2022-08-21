@@ -248,6 +248,10 @@ impl<'a, 'lua, 'dst> BodyVisitor for MunVisitor<'a, 'lua, 'dst> {
         (visit.body.init)(self.dst, &mut |dst: AnyOptionT| {
             if err.is_err() { return; }
             if let Some(field) = fields.next() {
+                if let Some(init) = field.guard::<sir::chivalry::Skip, Mun>() {
+                    (init.0)(dst);
+                    return;
+                }
                 let src = match ctx.ctx(table.raw_get(field.name)) {
                     Ok(s) => s,
                     Err(e) => {
@@ -436,6 +440,10 @@ impl<'a, 'lua, 'dst> BodyVisitor for MunVisitor<'a, 'lua, 'dst> {
                         (visit.body.init)(self.dst, &mut |dst: AnyOptionT| {
                             if err.is_err() { return; }
                             if let Some(field) = fields.next() {
+                                if let Some(init) = field.guard::<sir::chivalry::Skip, Mun>() {
+                                    (init.0)(dst);
+                                    return;
+                                }
                                 i += 1;
                                 let src = match ctx.ctx(table.raw_get(i)) {
                                     Ok(s) => s,
@@ -457,6 +465,10 @@ impl<'a, 'lua, 'dst> BodyVisitor for MunVisitor<'a, 'lua, 'dst> {
                         (visit.body.init)(self.dst, &mut |dst: AnyOptionT| {
                             if err.is_err() { return; }
                             if let Some(field) = fields.next() {
+                                if let Some(init) = field.guard::<sir::chivalry::Skip, Mun>() {
+                                    (init.0)(dst);
+                                    return;
+                                }
                                 let src = match ctx.ctx(table.raw_get(field.name)) {
                                     Ok(s) => s,
                                     Err(e) => {

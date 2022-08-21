@@ -116,3 +116,48 @@ mod blade_trait {
     }
 }
 pub use self::blade_trait::Blade;
+
+/// Create a [`Sword`] for a tuple. Field numbers must be provided.
+///
+/// # Usage
+/// ```no_compile
+/// tuple_sword(0: i32, 1: i32)
+/// ```
+#[macro_export]
+macro_rules! tuple_sword {
+    ($($n:literal: $t:ty),*) => {{
+        use $crate::prelude_macro::*;
+        Sword {
+            item: Arc::new(Item {
+                ty: Ty::of::<($($t,)*)>(),
+                guards: vec![],
+                body: Body::Struct(Arc::new(BodyStruct {
+                    body_type: BodyType::Tuple,
+                    fields: vec![
+                        $(Arc::new(Field {
+                            name: literal!($n),
+                            ty: Ty::of::<u32>(),
+                            as_ref: |d| &d.downcast_ref::<($($t,)*)>().unwrap().0,
+                            as_mut: |d| &mut d.downcast_mut::<($($t,),*)>().unwrap().0,
+                            with: |f: &mut dyn FnMut(AnyOptionT)| {
+                                let mut val = Option::<$t>::None;
+                                f(&mut val);
+                            },
+                            guards: vec![],
+                        }),)*
+                    ],
+                    // This could almost be done w/o a macro; but `init` is the problem.
+                    init: |out: AnyOptionT, each: &mut dyn FnMut(AnyOptionT)| {
+                        let out: &mut Option<($($t,)*)> = out.downcast_mut().expect("wrong type (enum)");
+                        let this = ($({
+                            let mut v = Option::<$t>::None;
+                            each(&mut v);
+                            if let Some(v) = v { v } else { return }
+                        },)*);
+                        *out = Some(this);
+                    },
+                })),
+            }),
+        }
+    }};
+}

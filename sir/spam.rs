@@ -8,7 +8,7 @@ impl fmt::Debug for Item {
         f.debug_struct("Item")
             .field("ty", &self.ty)
             .field("guards", &self.guards)
-            //.field("body", &self.body)
+            .field("body", &self.body)
             .finish()
     }
 }

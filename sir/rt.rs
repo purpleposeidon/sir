@@ -182,3 +182,64 @@ impl Variant {
         self.fields.len() == 0 && self.body_type == BodyType::Unit
     }
 }
+impl Sword {
+    /// Modifies this sword in-place.
+    pub fn rename(
+        &mut self,
+        rename: &dyn Fn(/*enum_variant:*/ bool, /*name:*/ Name) -> Name,
+    ) {
+        let item = Arc::make_mut(&mut self.item);
+        let fields = move |struct_field: bool, fields: &mut [Arc<Field>]| {
+            for field in fields {
+                let old = field.name;
+                let new = rename(struct_field, old);
+                if old != new {
+                    Arc::make_mut(field).name = new;
+                }
+            }
+        };
+        match &mut item.body {
+            Body::Struct(b) => fields(false, &mut Arc::make_mut(b).fields),
+            Body::Enum(b) => {
+                let b = Arc::make_mut(b);
+                for variant in &mut b.variants {
+                    let variant = Arc::make_mut(variant);
+                    let old = variant.name;
+                    let new = rename(true, old);
+                    variant.name = new;
+                    fields(false, &mut variant.fields);
+                }
+            },
+            _ => (),
+        }
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn renaming() {
+    #[derive(Debug)]
+    struct Blah {
+        x: i32,
+        z: i32,
+    }
+    let thing = sword! {
+        struct Blah where {},
+        x: i32,
+        z: i32,
+    };
+    let a = format!("{:?}", thing);
+    println!("new: {:?}", thing);
+    let mut new = thing.clone();
+    new.rename(&mut |_enum_variant, name| {
+        match name {
+            "x" => "var_x",
+            //"z" => "var_z",
+            _ => name,
+        }
+    });
+    println!("new: {:?}", new);
+    println!("old: {:?}", thing);
+    let b = format!("{:?}", thing);
+    assert_eq!(a, b); // Hopefully we aren't bothered by shallow clones
+}

@@ -51,9 +51,9 @@ impl KingdomBuilder {
         }
     }
     pub fn add<T: Blade>(&mut self) {
-        self.add_blade(Sword::of::<T>());
+        self.add_sword(Sword::of::<T>());
     }
-    pub fn add_blade(&mut self, sword: Sword) {
+    pub fn add_sword(&mut self, sword: Sword) {
         self.swords.insert(sword.item.ty.clone(), sword);
     }
     pub fn remove<T: 'static>(&mut self) {

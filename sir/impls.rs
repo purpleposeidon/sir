@@ -212,6 +212,7 @@ macro_rules! impl_primal_blades {
 }
 
 impl_primal_blades! {
+    (),
     bool,
     i8,
     u8,
@@ -225,6 +226,8 @@ impl_primal_blades! {
     u128,
     usize,
     isize,
+    f32,
+    f64,
     String,
     &'static str,
 }

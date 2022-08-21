@@ -263,7 +263,7 @@ pub fn blade_impl(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
                         span: field.ty.span(),
                     }), quote! { #str_i })
                 };
-                let guards = collect_guards(field.guards.as_ref(), &quote![sir::rt::Struct]);
+                let guards = collect_guards(field.guards.as_ref(), &quote![sir::rt::Field]);
                 let ty = field.ty.to_token_stream();
                 body = quote! {
                     #body

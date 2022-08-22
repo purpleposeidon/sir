@@ -103,10 +103,8 @@ impl Mun {
             *out = Some(val);
             Ok(())
         };
-        self.convert_primitive.insert(
-            (lt, Ty::of::<T>()),
-            Box::new(c),
-        );
+        let key = (lt, Ty::of::<T>());
+        self.convert_primitive.insert(key, Box::new(c));
     }
     pub fn sword<T: AnyDebug>(&self) -> Result<&Sword, rlua::Error> {
         self.kingdom.swords.get(&Ty::of::<T>())
@@ -245,6 +243,7 @@ impl<'a, 'lua, 'dst> BodyVisitor for MunVisitor<'a, 'lua, 'dst> {
         let mun = &self.mun;
         let lua = self.lua;
         let ctx = &self.ctx;
+        let mut i = 0;
         (visit.body.init)(self.dst, &mut |dst: AnyOptionT| {
             if err.is_err() { return; }
             if let Some(field) = fields.next() {
@@ -252,7 +251,12 @@ impl<'a, 'lua, 'dst> BodyVisitor for MunVisitor<'a, 'lua, 'dst> {
                     (init.0)(dst);
                     return;
                 }
-                let src = match ctx.ctx(table.raw_get(field.name)) {
+                i += 1;
+                let src = match visit.body.body_type {
+                    BodyType::Tuple => table.raw_get(i),
+                    _ => table.raw_get(field.name),
+                };
+                let src = match ctx.ctx(src) {
                     Ok(s) => s,
                     Err(e) => {
                         err = Err(e);
@@ -573,6 +577,8 @@ fn main() {
     kingdom.add::<HashMap<i32, bool>>();
     kingdom.add::<Example>();
     kingdom.add::<Nested>();
+    kingdom.add::<Vec<bool>>();
+    kingdom.add_sword(sir::tuple_sword!(0: i32, 1: i32));
     let kingdom = &kingdom.build();
 
     {
@@ -590,6 +596,8 @@ fn main() {
             [20] = false,
             [30] = true,
         },
+        vec = { true, false, true },
+        size = { 1024, 768 },
     }
     "##, None).unwrap();
         let r = mun.create::<Example>(&lua, r).expect("mun fail");
@@ -603,7 +611,10 @@ fn main() {
         nested: Nested,
         map: HashMap<i32, bool>,
         answer: Option<i32>,
+        vec: Vec<bool>,
+        size: (i32, i32),
     }
+
     impl Blade for Example {
         blade! {
             struct Example where {},
@@ -612,6 +623,8 @@ fn main() {
             nested: Nested,
             map: HashMap<i32, bool>,
             answer: Option<i32>,
+            vec: Vec<bool>,
+            size: (i32, i32),
         }
     }
     #[derive(Default, Debug)]

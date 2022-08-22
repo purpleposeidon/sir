@@ -137,7 +137,7 @@ macro_rules! tuple_sword {
                     fields: vec![
                         $(Arc::new(Field {
                             name: stringify!($n),
-                            ty: Ty::of::<u32>(),
+                            ty: Ty::of::<$t>(),
                             as_ref: |d| &d.downcast_ref::<Tup>().unwrap().$n,
                             as_mut: |d| &mut d.downcast_mut::<Tup>().unwrap().$n,
                             with: |f: &mut dyn FnMut(AnyOptionT)| {

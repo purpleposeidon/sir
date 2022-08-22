@@ -491,7 +491,34 @@ impl<'a, 'lua, 'dst> BodyVisitor for MunVisitor<'a, 'lua, 'dst> {
         }
         err("<value>", "no matching variant")
     }
-    fn visit_vec(&mut self, _visit: Visit<BodyVec>) -> Result<(), rlua::Error> { todo!() }
+    fn visit_vec(&mut self, visit: Visit<BodyVec>) -> Result<(), rlua::Error> {
+        let src: rlua::Table = FromLua::from_lua(self.src.clone(), self.lua)?;
+        let mut src = src.sequence_values();
+        let ity = &visit.body.items;
+        let is = self.mun.kingdom.swords.get(ity).expect("item missing sword");
+        let mut res = Ok(());
+        let mun = &self.mun;
+        let lua = self.lua;
+        let ctx = &self.ctx;
+        let mut i = 1;
+        let hint = src.size_hint().1;
+        (visit.body.vt.collect)(self.dst, hint, &mut |dst: AnyOptionT| {
+            if res.is_err() { return; }
+            if let Some(Ok(src)) = src.next() {
+                let ctx = Ctx {
+                    parent: Some(ctx),
+                    part: CtxPart::Index(i),
+                };
+                let mut visitor = MunVisitor {
+                    mun, lua, src, dst,
+                    ctx: ctx.clone(),
+                };
+                res = mun.kingdom.visit_sword(is, &mut visitor);
+            }
+            i += 1;
+        });
+        res
+    }
     fn visit_map(&mut self, visit: Visit<BodyMap>) -> Result<(), rlua::Error> {
         let src: rlua::Table = FromLua::from_lua(self.src.clone(), self.lua)?;
         let mut src = src.pairs();
@@ -506,6 +533,7 @@ impl<'a, 'lua, 'dst> BodyVisitor for MunVisitor<'a, 'lua, 'dst> {
         let mut i = 1;
         let hint = src.size_hint().1;
         (visit.body.vt.collect)(self.dst, hint, &mut |key: AnyOptionT, val: AnyOptionT| {
+            if res.is_err() { return; }
             if let Some(Ok(kv)) = src.next() {
                 let ctx = Ctx {
                     parent: Some(ctx),

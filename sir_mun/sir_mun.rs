@@ -199,10 +199,12 @@ impl<'a> Ctx<'a> {
     }
     fn ctx<T>(&self, r: Result<T, rlua::Error>) -> Result<T, rlua::Error> {
         use rlua::Error::*;
-        r.map_err(|e| match e {
-            ToLuaConversionError { from, to, message: None } => ToLuaConversionError { from, to, message: Some(self.to_string()) },
-            FromLuaConversionError { from, to, message: None } => FromLuaConversionError { from, to, message: Some(self.to_string()) },
-            e => e,
+        r.map_err(|e| {
+            match e {
+                ToLuaConversionError { from, to, message: None } => ToLuaConversionError { from, to, message: Some(self.to_string()) },
+                FromLuaConversionError { from, to, message: None } => FromLuaConversionError { from, to, message: Some(self.to_string()) },
+                e => e,
+            }
         })
     }
 }

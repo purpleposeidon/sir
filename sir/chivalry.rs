@@ -152,7 +152,10 @@ impl fmt::Debug for Skip {
 impl Skip {
     pub fn default<T: AnyDebug + Default>() -> Self {
         Skip(|out: &mut dyn AnyDebug| {
-            let out: &mut Option<T> = out.downcast_mut().expect("wrong type");
+            let ty = <dyn AnyDebug>::get_ty(out);
+            let out: &mut Option<T> = out.downcast_mut().unwrap_or_else(|| {
+                panic!("Skip::default should initialize Option<{:?}>, but was given {:?}", Ty::of::<T>(), ty)
+            });
             *out = Some(T::default());
         })
     }

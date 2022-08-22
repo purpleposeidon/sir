@@ -185,9 +185,9 @@ impl Variant {
 impl Sword {
     /// Modifies this sword in-place.
     pub fn rename(
-        &mut self,
+        mut self,
         rename: &dyn Fn(/*enum_variant:*/ bool, /*name:*/ Name) -> Name,
-    ) {
+    ) -> Self {
         let item = Arc::make_mut(&mut self.item);
         let fields = move |struct_field: bool, fields: &mut [Arc<Field>]| {
             for field in fields {
@@ -212,6 +212,7 @@ impl Sword {
             },
             _ => (),
         }
+        self
     }
 }
 
@@ -230,8 +231,7 @@ fn renaming() {
     };
     let a = format!("{:?}", thing);
     println!("new: {:?}", thing);
-    let mut new = thing.clone();
-    new.rename(&mut |_enum_variant, name| {
+    let new = thing.clone().rename(&mut |_enum_variant, name| {
         match name {
             "x" => "var_x",
             //"z" => "var_z",
